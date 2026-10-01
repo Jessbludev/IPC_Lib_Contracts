@@ -1,39 +1,76 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seguridad (Wiki) — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="seguridad">Seguridad</h1>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seguridad (Wiki) — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html" class="on">Seguridad (Wiki)</a></aside><main class="main"><h1 id="seguridad">Seguridad</h1>
 <p>Políticas, qué las respalda, y qué modelo de amenaza asumimos.</p>
 <h2 id="modelo-de-amenaza">Modelo de amenaza</h2>
 <p>Asumimos que el atacante controla el canal de transporte y puede leer, modificar, reordenar, reenviar e inyectar frames. No asumimos que el anfitrión esté comprometido: si lo estuviera, no hay nada que hacer desde aquí.</p>
 <p><strong>No</strong> protegemos contra un atacante con acceso a la clave del anfitrión, ni contra roots de análisis en tiempo de ejecución. Lo que sí protegemos es el tráfico y los contratos.</p>
 <h2 id="zero-trust">Zero trust</h2>
-<p>Nada se acepta porque "normalmente es correcto". Toda entrada se valida explícitamente, y el fallo es un error, nunca un valor por defecto.</p>
-<div class="table-wrap"><table><thead><tr><th>Comprobación</th><th>Dónde</th></tr></thead><tbody><tr><td>Magic y versión de formato</td><td><code>ContractHeader::from_bytes</code></td></tr><tr><td>Header canónico byte a byte</td><td><code>ContractHeader::from_bytes</code></td></tr><tr><td>Bounds y solapamientos de sección</td><td><code>ContractHeader::from_bytes</code></td></tr><tr><td>UTF-8 en campos de texto</td><td>validación de header</td></tr><tr><td>Enums y flags con bits desconocidos</td><td><code>Frame::from_bytes</code></td></tr><tr><td><code>contract_hash</code> recalculado</td><td><code>Contract::verify</code></td></tr><tr><td>Longitudes de todas las variables</td><td>cada parser</td></tr><tr><td>Prefijo de contrato por frame</td><td><code>WireProtocol::receive</code></td></tr></tbody></table></div>
+<p>Nada se acepta porque &quot;normalmente es correcto&quot;. Toda entrada se valida explícitamente, y el fallo es un error, nunca un valor por defecto.</p>
+<table><thead><tr>
+<th>Comprobación</th>
+<th>Dónde</th>
+</tr></thead><tbody>
+<tr>
+<td>Magic y versión de formato</td>
+<td><code>ContractHeader::from_bytes</code></td>
+</tr>
+<tr>
+<td>Header canónico byte a byte</td>
+<td><code>ContractHeader::from_bytes</code></td>
+</tr>
+<tr>
+<td>Bounds y solapamientos de sección</td>
+<td><code>ContractHeader::from_bytes</code></td>
+</tr>
+<tr>
+<td>UTF-8 en campos de texto</td>
+<td>validación de header</td>
+</tr>
+<tr>
+<td>Enums y flags con bits desconocidos</td>
+<td><code>Frame::from_bytes</code></td>
+</tr>
+<tr>
+<td><code>contract_hash</code> recalculado</td>
+<td><code>Contract::verify</code></td>
+</tr>
+<tr>
+<td>Longitudes de todas las variables</td>
+<td>cada parser</td>
+</tr>
+<tr>
+<td>Prefijo de contrato por frame</td>
+<td><code>WireProtocol::receive</code></td>
+</tr>
+</tbody></table>
 <h3 id="fallar-de-forma-ruidosa">Fallar de forma ruidosa</h3>
 <p>Un contrato malformado <strong>no</strong> se carga parcialmente. Se rechaza entero. Un parser que adivine es un parser que somebody va a exploitear.</p>
 <h2 id="zero-knowledge-isolation">Zero knowledge / isolation</h2>
 <p>Lo que la librería <strong>no</strong> necesita saber:</p>
 <ul><li><strong>No conoce tu payload.</strong> Solo ve bytes cifrados. No inspecciona, no</li></ul>
-<p>  registra, no transforma.</p>
+<p>registra, no transforma.</p>
 <ul><li><strong>No conoce tu clave.</strong> <code>kd_secret</code> se le pasa ya derivado. La librería</li></ul>
-<p>  nunca lo ve en más de una llamada, y <code>SessionKey</code> implementa <code>Drop</code> para   sobrescribir el material al destruirse.</p>
+<p>nunca lo ve en más de una llamada, y <code>SessionKey</code> implementa <code>Drop</code> para sobrescribir el material al destruirse.</p>
 <ul><li><strong>No conoce tu identidad.</strong> No pide ni almacena información del usuario.</li></ul>
-<p>  La autorización es de la aplicación.</p>
+<p>La autorización es de la aplicación.</p>
 <ul><li><strong>No tiene estado global.</strong> Cada <code>AntiReplay</code> y cada <code>Contract</code> es</li></ul>
-<p>  explícito. Dos instancias no comparten nada.</p>
-<h3 id="gesti-n-de-material-de-clave">Gestión de material de clave</h3>
+<p>explícito. Dos instancias no comparten nada.</p>
+<h3 id="gestion-de-material-de-clave">Gestión de material de clave</h3>
 <ul><li>El secreto raíz es lo único que hay que proteger. Todo lo demás se deriva.</li><li>Las claves de sesión se derivan por sesión y se pueden descartar. No hace</li></ul>
-<p>  falta almacenarlas.</p>
+<p>falta almacenarlas.</p>
 <ul><li>Al destruir una clave, se sobrescribe antes de liberar. <code>SessionKey</code></li></ul>
-<p>  implementa <code>Drop</code> justamente para esto.</p>
+<p>implementa <code>Drop</code> justamente para esto.</p>
 <ul><li>Las claves privadas de firma deberían vivir en el keystore del sistema</li></ul>
-<p>  (Android Keystore, Secure Enclave), no en ficheros de la app.</p>
+<p>(Android Keystore, Secure Enclave), no en ficheros de la app.</p>
 <h2 id="zero-log">Zero log</h2>
 <p><strong>La librería no registra nada. No inicializa sinks.</strong></p>
 <p>Esto no es una omisión: es una decisión de diseño, y está en el código. El motor Rust no llama a <code>tracing_subscriber::init()</code>, y no hay <code>println!</code> con datos de sesión.</p>
 <p>Por qué: en un runtime móvil, un sink por defecto escribe en <code>logcat</code>, que es legible por otras apps con el permiso correspondiente. Una librería de IPC que emite trazas por su cuenta filtra la política de observabilidad del anfitrión a cualquier app instalada.</p>
 <p><strong>Lo que sí sale por stdout</strong> es deliberado y está acotado: el arranque del binario (<code>IPC Engine v2 — &lt;versión&gt;</code>). Es lo mismo que verías ejecutando el binario a mano, y no contiene claves, hashes completos ni payloads.</p>
 <p>La observabilidad la instala el proceso anfitrión, con un filtro explícito.</p>
-<h3 id="qu-nunca-debe-registrarse">Qué nunca debe registrarse</h3>
+<h3 id="que-nunca-debe-registrarse">Qué nunca debe registrarse</h3>
 <ul><li>Material de clave, ni siquiera un prefijo</li><li><code>contract_hash</code> completo (el prefijo de 12 bytes sí es apto, precisamente</li></ul>
-<p>  porque no es identidad)</p>
+<p>porque no es identidad)</p>
 <ul><li>Plaintext ni ciphertext</li><li>Nombres de operaciones, si pueden revelar comportamiento del usuario</li></ul>
 <h2 id="anti-replay">Anti-replay</h2>
 <p>Ventana sliding de 1024 secuencias por <code>(session_id, direction)</code>.</p>
@@ -41,28 +78,92 @@
 <p>La comprobación del AEAD va <strong>antes</strong> que el registro de secuencia. Si no, un atacante sin la clave podría hacer avanzar la ventana y bloquear tráfico válido: denegación de servicio sin conocer ningún secreto.</p>
 <h2 id="integridad-del-contrato">Integridad del contrato</h2>
 <p>Todo byte del archivo está cubierto por <code>contract_hash</code>, o el contrato se rechaza. La regla es: si un byte no está en el preimagen, no puede estar en el archivo.</p>
-<p>Esto se traduce en una defensa concreta: el parser exige que el header re-serializado sea idéntico a los bytes leídos, de modo que el relleno tras los NUL no puede variar. El fuzzing encontró exactamente ese fallo en v2.1 —ver <a href="implementaci-n.html#fallo-de-integridad-encontrado-por-fuzzing">Implementación</a>—.</p>
+<p>Esto se traduce en una defensa concreta: el parser exige que el header re-serializado sea idéntico a los bytes leídos, de modo que el relleno tras los NUL no puede variar. El fuzzing encontró exactamente ese fallo en v2.1 —ver <a href="implementation.html">Implementación</a>—.</p>
 <h2 id="firma">Firma</h2>
 <p>Ed25519 real en los tres lenguajes:</p>
-<div class="table-wrap"><table><thead><tr><th>Lenguaje</th><th>Implementación</th><th>Notas</th></tr></thead><tbody><tr><td>Rust</td><td><code>ed25519-dalek</code></td><td>Referencia</td></tr><tr><td>C++</td><td>OpenSSL 3</td><td><code>EVP_PKEY_ED25519</code></td></tr><tr><td>Kotlin</td><td><code>SunEC</code> (JDK 15+)</td><td>Sin dependencias externas</td></tr></tbody></table></div>
-<p><strong>Por qué no HMAC ni <code>SHA-256(private_key)</code>, que es lo que hacía v2.1:</strong> no son firma. Una clave derivada de un secreto no demuestra identidad: cualquiera que conozca el secreto puede "firmar". La firma tiene que demostrar que quien firmó posee una clave privada que el verificador no tiene.</p>
+<table><thead><tr>
+<th>Lenguaje</th>
+<th>Implementación</th>
+<th>Notas</th>
+</tr></thead><tbody>
+<tr>
+<td>Rust</td>
+<td><code>ed25519-dalek</code></td>
+<td>Referencia</td>
+</tr>
+<tr>
+<td>C++</td>
+<td>OpenSSL 3</td>
+<td><code>EVP_PKEY_ED25519</code></td>
+</tr>
+<tr>
+<td>Kotlin</td>
+<td><code>SunEC</code> (JDK 15+)</td>
+<td>Sin dependencias externas</td>
+</tr>
+</tbody></table>
+<p>**Por qué no HMAC ni <code>SHA-256(private_key)</code>, que es lo que hacía v2.1:** no son firma. Una clave derivada de un secreto no demuestra identidad: cualquiera que conozca el secreto puede &quot;firmar&quot;. La firma tiene que demostrar que quien firmó posee una clave privada que el verificador no tiene.</p>
 <p><code>SignaturePolicy::Required</code> es el valor por defecto y es <strong>fail-closed</strong>: sin firma, se rechaza.</p>
 <h3 id="confianza-de-la-clave">Confianza de la clave</h3>
 <p><code>ContractReader::from_bytes</code> comprueba presencia de firma y <code>contract_hash</code>, pero <strong>no verifica la firma criptográficamente</strong> porque no recibe una clave pública confiable — no debería recibirla: eso sería Trusted Third Party.</p>
-<p>La verificación real está en <code>ContractSigner::verify</code>, que sí recibe la clave. Mientras tanto, usar <code>from_bytes</code> sin <code>verify</code> es un pie de hongo documentado en la <a href="hoja-de-ruta.html">hoja de ruta</a>.</p>
+<p>La verificación real está en <code>ContractSigner::verify</code>, que sí recibe la clave. Mientras tanto, usar <code>from_bytes</code> sin <code>verify</code> es un pie de hongo documentado en la <a href="roadmap.html">hoja de ruta</a>.</p>
 <h2 id="nonces">Nonces</h2>
 <p><code>nonce = BLAKE3_keyed(nonce_key, dominio ‖ direction ‖ session_id ‖ sequence)[0..12]</code></p>
 <p>Determinista y sin negociación: los tres lenguajes calculan los mismos 12 bytes. No es aleatorio, así que <strong>la seguridad depende de que la secuencia no se repita</strong> bajo la misma clave de sesión.</p>
 <p><code>AntiReplay</code> cubre la repetición dentro de una sesión. Si persistes el contador, un reinicio a cero bajo la misma clave reutiliza nonces. Ante la duda, deriva una clave de sesión nueva.</p>
-<h2 id="resistente-a-ingenier-a-inversa">Resistente a ingeniería inversa</h2>
+<h2 id="resistente-a-ingenieria-inversa">Resistente a ingeniería inversa</h2>
 <ul><li>Claves redacted en logs y errores: nunca se imprime material de clave.</li><li><code>SessionKey</code> implementa <code>Drop</code> y sobrescribe al destruirse.</li><li>Sin-reflection ni serialización de estado interno.</li></ul>
 <p><strong>Límite honesto:</strong> esto protege contra volcados de memoria posteriores a la limpieza, y contra fugas por logs. No protege contra un atacante con acceso al proceso mientras la clave está en uso — para eso hace falta el keystore del sistema, que la librería no puede imponer.</p>
-<h2 id="verificaci-n">Verificación</h2>
+<h2 id="verificacion">Verificación</h2>
 <p>Cada política de esta tabla tiene un test que la respalda:</p>
-<div class="table-wrap"><table><thead><tr><th>Política</th><th>Test</th></tr></thead><tbody><tr><td>Sin panics en parsers</td><td><code>tests/fuzz_parsers.rs</code>, 11 property tests</td></tr><tr><td>Integridad total</td><td><code>test_no_byte_of_the_file_escapes_integrity</code></td></tr><tr><td>Contrato canónico</td><td>rejection test de header no canónico</td></tr><tr><td>Anti-replay correcto</td><td><code>tests/conformance.rs</code>, ventana sliding</td></tr><tr><td>AEAD antes de anti-replay</td><td>orden en <code>WireProtocol::receive</code></td></tr><tr><td>BLAKE3 correcto</td><td>vectores oficiales de BLAKE3</td></tr><tr><td>BLAKE3 keyed correcto</td><td><code>tests/vectors/crypto.json</code></td></tr><tr><td>Ed25519 correcto</td><td><code>tests/vectors/crypto.json</code>, 3 lenguajes</td></tr><tr><td>Conformidad C++</td><td>18 checks</td></tr><tr><td>Conformidad Kotlin</td><td>39 checks</td></tr></tbody></table></div>
-<pre><code class="language-bash">./run_all_tests.sh</code></pre>
+<table><thead><tr>
+<th>Política</th>
+<th>Test</th>
+</tr></thead><tbody>
+<tr>
+<td>Sin panics en parsers</td>
+<td><code>tests/fuzz_parsers.rs</code>, 11 property tests</td>
+</tr>
+<tr>
+<td>Integridad total</td>
+<td><code>test_no_byte_of_the_file_escapes_integrity</code></td>
+</tr>
+<tr>
+<td>Contrato canónico</td>
+<td>rejection test de header no canónico</td>
+</tr>
+<tr>
+<td>Anti-replay correcto</td>
+<td><code>tests/conformance.rs</code>, ventana sliding</td>
+</tr>
+<tr>
+<td>AEAD antes de anti-replay</td>
+<td>orden en <code>WireProtocol::receive</code></td>
+</tr>
+<tr>
+<td>BLAKE3 correcto</td>
+<td>vectores oficiales de BLAKE3</td>
+</tr>
+<tr>
+<td>BLAKE3 keyed correcto</td>
+<td><code>tests/vectors/crypto.json</code></td>
+</tr>
+<tr>
+<td>Ed25519 correcto</td>
+<td><code>tests/vectors/crypto.json</code>, 3 lenguajes</td>
+</tr>
+<tr>
+<td>Conformidad C++</td>
+<td>18 checks</td>
+</tr>
+<tr>
+<td>Conformidad Kotlin</td>
+<td>39 checks</td>
+</tr>
+</tbody></table>
+<pre><code class="lang-bash">./run_all_tests.sh</code></pre>
 <h2 id="lo-que-este-documento-no-cubre">Lo que este documento no cubre</h2>
 <ul><li>Auditoría externa de las implementaciones criptográficas propias (BLAKE3</li></ul>
-<p>  en C++ y Kotlin están escritas a mano y verificadas contra vectores, no   auditadas).</p>
+<p>en C++ y Kotlin están escritas a mano y verificadas contra vectores, no auditadas).</p>
 <ul><li>Seguridad del transporte: no existe todavía.</li><li>Gestión del ciclo de vida de <code>kd_secret</code> en la aplicación anfitriona.</li><li>resistancia a ingeniería inversa con herramientas de instrumentación de</li></ul>
-<p>  runtime.</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
+<p>runtime.</p><footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

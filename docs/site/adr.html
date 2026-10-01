@@ -1,12 +1,13 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ADR — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="architecture-decision-records-adr">Architecture Decision Records (ADR)</h1>
-<h2 id="ipc-kotlin-rust-v2-sistema-de-contratos-binarios-can-nicos">IPC Kotlin-Rust v2 - Sistema de Contratos Binarios Canónicos</h2>
-<p>---</p>
-<h2 id="adr-001-comunicaci-n-inter-proceso-sin-ffi">ADR-001: Comunicación Inter-Proceso Sin FFI</h2>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ADR — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html" class="on">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html">Seguridad (Wiki)</a></aside><main class="main"><h1 id="architecture-decision-records-adr">Architecture Decision Records (ADR)</h1>
+<h2 id="ipc-kotlin-rust-v2---sistema-de-contratos-binarios-canonicos">IPC Kotlin-Rust v2 - Sistema de Contratos Binarios Canónicos</h2>
+<hr>
+<h2 id="adr-001-comunicacion-inter-proceso-sin-ffi">ADR-001: Comunicación Inter-Proceso Sin FFI</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23 <strong>Decisor</strong>: Sistema de diseño</p>
 <h3 id="contexto">Contexto</h3>
 <p>Se requiere comunicación entre aplicaciones Kotlin (Android/JVM) y procesos Rust/CPP/Zig para procesamiento de bajo nivel, evitando:</p>
 <ul><li>FFI (Foreign Function Interface)</li><li>Librerías compartidas (.so, .dll, .dylib)</li><li>Memoria compartida</li></ul>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Usar <strong>Unix Domain Sockets</strong> como transporte principal con el protocolo CBC (Canonical Binary Contract):</p>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
 │                    ARQUITECTURA DE COMUNICACIÓN                       │
@@ -32,13 +33,13 @@
 <ul><li>Aislamiento completo entre procesos</li><li>No hay memory leaks entre límites de lenguaje</li><li>Seguridad de memoria garantizada por el runtime de cada proceso</li><li>Facilidad de debugging (procesos separados)</li></ul>
 <p><strong>Negativas</strong>:</p>
 <ul><li>Overhead de serialización/deserialización</li><li>Latencia mayor que memoria compartida</li><li>Requiere sistema de archivos para Unix Sockets</li></ul>
-<p>---</p>
-<h2 id="adr-002-contratos-binarios-can-nicos-cbc">ADR-002: Contratos Binarios Canónicos (CBC)</h2>
+<hr>
+<h2 id="adr-002-contratos-binarios-canonicos-cbc">ADR-002: Contratos Binarios Canónicos (CBC)</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
 <h3 id="contexto">Contexto</h3>
 <p>Se necesita un formato de contrato que sea:</p>
 <ul><li>Inmutable una vez compilado</li><li>Verificable criptográficamente</li><li>Rápido de parsear en runtime</li><li>Portable entre lenguajes</li></ul>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Crear formato CBC (Canonical Binary Contract) con header fijo de 256 bytes:</p>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
 │                    FORMATO CBC (256 bytes)                            │
@@ -62,14 +63,14 @@
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
 <h3 id="beneficios">Beneficios</h3>
 <ol><li><strong>Parsing O(1)</strong>: Header de tamaño fijo permite acceso directo a campos</li><li><strong>Verificable</strong>: Hash BLAKE3-256 de todo el contrato (excepto firma) - identidad primaria</li><li><strong>Portable</strong>: Formato big-endian, sin padding específico de arquitectura</li><li><strong>Firmable</strong>: 64 bytes al final para firma Ed25519</li></ol>
-<p>---</p>
-<h2 id="adr-003-sistema-de-tipos-con-ids-num-ricos">ADR-003: Sistema de Tipos con IDs Numéricos</h2>
+<hr>
+<h2 id="adr-003-sistema-de-tipos-con-ids-numericos">ADR-003: Sistema de Tipos con IDs Numéricos</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
 <h3 id="contexto">Contexto</h3>
 <p>Se necesita eliminar parsing de strings en runtime para maximizar performance.</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Usar IDs numéricos de 16 bits para tipos y operaciones:</p>
-<pre><code class="language-rust">// Tipos primitivos
+<pre><code class="lang-rust">// Tipos primitivos
 pub enum PrimitiveType {
     U8 = 0x0001,
     U16 = 0x0002,
@@ -86,17 +87,17 @@ pub const OP_AUTH: u16 = 0x0001;
 pub const OP_PING: u16 = 0x0002;</code></pre>
 <h3 id="beneficios">Beneficios</h3>
 <ul><li>Eliminación de string comparison en hot paths</li><li>Serialización más compacta</li><li>Lookup O(1) en hashmap</li><li>Prevención de typos en tiempo de compilación (enum en Rust)</li></ul>
-<p>---</p>
-<h2 id="adr-004-seguridad-criptogr-fica-real">ADR-004: Seguridad Criptográfica Real</h2>
-<p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23 <strong>Revisado</strong>: Reemplazó XOR "encryption" (inseguro)</p>
-<h3 id="decisi-n-anterior-descartada">Decisión Anterior (Descartada)</h3>
-<pre><code class="language-rust">// ❌ NO USAR - XOR no es encriptación
+<hr>
+<h2 id="adr-004-seguridad-criptografica-real">ADR-004: Seguridad Criptográfica Real</h2>
+<p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23 <strong>Revisado</strong>: Reemplazó XOR &quot;encryption&quot; (inseguro)</p>
+<h3 id="decision-anterior-descartada">Decisión Anterior (Descartada)</h3>
+<pre><code class="lang-rust">// ❌ NO USAR - XOR no es encriptación
 fn xor_encrypt(data: &amp;[u8], key: &amp;[u8]) -&gt; Vec&lt;u8&gt; {
     data.iter().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect()
 }</code></pre>
-<h3 id="decisi-n-actual">Decisión Actual</h3>
+<h3 id="decision-actual">Decisión Actual</h3>
 <p><strong>AEAD con ChaCha20-Poly1305</strong> (preferido) o AES-256-GCM:</p>
-<pre><code class="language-rust">// ✅ AEAD real con autenticación
+<pre><code class="lang-rust">// ✅ AEAD real con autenticación
 pub struct AeadCipher;
 
 impl AeadCipher {
@@ -113,18 +114,18 @@ impl AeadCipher {
         // - Anti-replay (con nonce único)
     }
 }</code></pre>
-<h3 id="hash-criptogr-fico">Hash Criptográfico</h3>
-<pre><code class="language-rust">// ❌ NO USAR - xxHash no es criptográfico
+<h3 id="hash-criptografico">Hash Criptográfico</h3>
+<pre><code class="lang-rust">// ❌ NO USAR - xxHash no es criptográfico
 // ✅ USAR - BLAKE3-256 (SHA-256 sólo como digest legacy opcional)
 pub fn calculate_contract_hash(data: &amp;[u8]) -&gt; [u8; 32] {
     blake3::hash(data).into()
 }</code></pre>
-<p>---</p>
+<hr>
 <h2 id="adr-005-key-derivation-desde-seed">ADR-005: Key Derivation desde Seed</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
 <h3 id="contexto">Contexto</h3>
-<p>El usuario solicitó "semilla de emisor receptor único" similar a SSH/mTLS.</p>
-<h3 id="decisi-n">Decisión</h3>
+<p>El usuario solicitó &quot;semilla de emisor receptor único&quot; similar a SSH/mTLS.</p>
+<h3 id="decision">Decisión</h3>
 <p>Derivar claves usando HKDF-like construction:</p>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
 │                    KEY DERIVATION CHAIN                               │
@@ -142,17 +143,47 @@ pub fn calculate_contract_hash(data: &amp;[u8]) -&gt; [u8; 32] {
 │   (HMAC)            (AEAD)                                         │        │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
-<h3 id="implementaci-n">Implementación</h3>
-<pre><code class="language-rust">pub fn derive_session_key(seed: &amp;[u8], contract_hash: &amp;[u8; 32], session_id: u64) -&gt; [u8; 32] {
+<h3 id="implementacion">Implementación</h3>
+<pre><code class="lang-rust">pub fn derive_session_key(seed: &amp;[u8], contract_hash: &amp;[u8; 32], session_id: u64) -&gt; [u8; 32] {
     let info = format!(&quot;session{}{:016x}&quot;, hex::encode(contract_hash), session_id);
     hmac_sha256(seed, info.as_bytes())
 }</code></pre>
-<p>---</p>
-<h2 id="adr-006-modos-de-ejecuci-n">ADR-006: Modos de Ejecución</h2>
+<hr>
+<h2 id="adr-006-modos-de-ejecucion">ADR-006: Modos de Ejecución</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Soportar 4 modos de ejecución:</p>
-<div class="table-wrap"><table><thead><tr><th>Modo</th><th>Descripción</th><th>Sesión</th><th>Respuesta</th></tr></thead><tbody><tr><td><code>MESSAGE_RESPONSE</code></td><td>Request-Response clásico</td><td>Persistente</td><td>Sí</td></tr><tr><td><code>MULTIPLEXING</code></td><td>Múltiples operaciones concurrentes</td><td>Persistente</td><td>Sí</td></tr><tr><td><code>FIRE_AND_FORGET</code></td><td>Enviar y olvidar</td><td>Temporal</td><td>No</td></tr><tr><td><code>REAL_TIME</code></td><td>Streaming continuo</td><td>Persistente</td><td>Sí</td></tr></tbody></table></div>
+<table><thead><tr>
+<th>Modo</th>
+<th>Descripción</th>
+<th>Sesión</th>
+<th>Respuesta</th>
+</tr></thead><tbody>
+<tr>
+<td><code>MESSAGE_RESPONSE</code></td>
+<td>Request-Response clásico</td>
+<td>Persistente</td>
+<td>Sí</td>
+</tr>
+<tr>
+<td><code>MULTIPLEXING</code></td>
+<td>Múltiples operaciones concurrentes</td>
+<td>Persistente</td>
+<td>Sí</td>
+</tr>
+<tr>
+<td><code>FIRE_AND_FORGET</code></td>
+<td>Enviar y olvidar</td>
+<td>Temporal</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>REAL_TIME</code></td>
+<td>Streaming continuo</td>
+<td>Persistente</td>
+<td>Sí</td>
+</tr>
+</tbody></table>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
 │                         MODOS DE EJECUCIÓN                            │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -175,18 +206,53 @@ pub fn calculate_contract_hash(data: &amp;[u8]) -&gt; [u8; 32] {
 │  └──────┘  end ───────────► └──────┘                  └──────┘   │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
-<p>---</p>
+<hr>
 <h2 id="adr-007-roles-de-contrato">ADR-007: Roles de Contrato</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Definir 6 roles de contrato:</p>
-<div class="table-wrap"><table><thead><tr><th>Rol</th><th>Valor</th><th>Descripción</th></tr></thead><tbody><tr><td><code>CHILD</code></td><td>0x01</td><td>Proceso subordinado/controlado</td></tr><tr><td><code>MUTUAL</code></td><td>0x02</td><td>Ambos pueden iniciar operaciones</td></tr><tr><td><code>PEER</code></td><td>0x03</td><td>Comunicación simétrica P2P</td></tr><tr><td><code>MUX</code></td><td>0x04</td><td>Múltiples canales lógicos</td></tr><tr><td><code>STREAM</code></td><td>0x05</td><td>Flujo persistente</td></tr><tr><td><code>ONEWAY</code></td><td>0x06</td><td>Solo envío</td></tr></tbody></table></div>
-<p>---</p>
+<table><thead><tr>
+<th>Rol</th>
+<th>Valor</th>
+<th>Descripción</th>
+</tr></thead><tbody>
+<tr>
+<td><code>CHILD</code></td>
+<td>0x01</td>
+<td>Proceso subordinado/controlado</td>
+</tr>
+<tr>
+<td><code>MUTUAL</code></td>
+<td>0x02</td>
+<td>Ambos pueden iniciar operaciones</td>
+</tr>
+<tr>
+<td><code>PEER</code></td>
+<td>0x03</td>
+<td>Comunicación simétrica P2P</td>
+</tr>
+<tr>
+<td><code>MUX</code></td>
+<td>0x04</td>
+<td>Múltiples canales lógicos</td>
+</tr>
+<tr>
+<td><code>STREAM</code></td>
+<td>0x05</td>
+<td>Flujo persistente</td>
+</tr>
+<tr>
+<td><code>ONEWAY</code></td>
+<td>0x06</td>
+<td>Solo envío</td>
+</tr>
+</tbody></table>
+<hr>
 <h2 id="adr-008-anti-replay-protection">ADR-008: Anti-Replay Protection</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Implementar ventana deslizante para detectar ataques de replay:</p>
-<pre><code class="language-rust">pub struct AntiReplay {
+<pre><code class="lang-rust">pub struct AntiReplay {
     seen_nonces: HashMap&lt;u64, u64&gt;,  // nonce -&gt; timestamp
     window_size: usize,
 }
@@ -204,12 +270,12 @@ impl AntiReplay {
 }</code></pre>
 <h3 id="consideraciones">Consideraciones</h3>
 <ul><li>Nonce: 96 bits (12 bytes) para evitar colisiones</li><li>Limpieza periódica de nonces antiguos (&gt;1 minuto)</li><li>Almacenamiento en memoria (no persistente entre reinicios)</li></ul>
-<p>---</p>
-<h2 id="adr-009-dsl-para-definici-n-de-contratos">ADR-009: DSL para Definición de Contratos</h2>
+<hr>
+<h2 id="adr-009-dsl-para-definicion-de-contratos">ADR-009: DSL para Definición de Contratos</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Crear DSL para authoring de contratos con output binario:</p>
-<pre><code class="language-dsl">contract &quot;image_processor&quot; {
+<pre><code class="lang-dsl">contract &quot;image_processor&quot; {
     version 1.0.0
     namespace &quot;com.example&quot;
     role mutual
@@ -235,10 +301,10 @@ impl AntiReplay {
 }</code></pre>
 <h3 id="beneficios">Beneficios</h3>
 <ul><li>Legible por humanos para debugging</li><li>Validación en tiempo de compilación</li><li>Output: archivo <code>.cbc</code> binario</li><li>Generadores de código para Rust, Kotlin, TypeScript</li></ul>
-<p>---</p>
-<h2 id="adr-010-generadores-de-c-digo-por-lenguaje">ADR-010: Generadores de Código por Lenguaje</h2>
+<hr>
+<h2 id="adr-010-generadores-de-codigo-por-lenguaje">ADR-010: Generadores de Código por Lenguaje</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
-<h3 id="decisi-n">Decisión</h3>
+<h3 id="decision">Decisión</h3>
 <p>Generar bindings tipados para cada lenguaje:</p>
 <pre><code>contracts/image_processor.cbc
         │
@@ -258,11 +324,11 @@ impl AntiReplay {
                                     └── class ContractClient</code></pre>
 <h3 id="beneficios">Beneficios</h3>
 <ul><li>Type safety en todos los lenguajes</li><li>API idiomática por lenguaje</li><li>Compilación separada de contrato</li></ul>
-<p>---</p>
+<hr>
 <h2 id="adr-011-bug-de-buffer-overflow-corregido">ADR-011: Bug de Buffer Overflow Corregido</h2>
 <p><strong>Estado</strong>: Corregido <strong>Fecha</strong>: 2025-09-23 <strong>Issue</strong>: Header de paquete con tamaño incorrecto</p>
 <h3 id="problema-original">Problema Original</h3>
-<pre><code class="language-rust">// ❌ Código original con bug
+<pre><code class="lang-rust">// ❌ Código original con bug
 pub struct PacketHeader {
     magic: [u8; 4],      // offset 0-3
     version: u8,          // offset 4
@@ -279,8 +345,8 @@ impl PacketHeader {
         //                         Buffer overflow! 13 &gt; 40
     }
 }</code></pre>
-<h3 id="correcci-n">Corrección</h3>
-<pre><code class="language-rust">// ✅ Código corregido
+<h3 id="correccion">Corrección</h3>
+<pre><code class="lang-rust">// ✅ Código corregido
 pub struct Frame {
     pub magic: [u8; 4],
     pub version: u8,
@@ -300,11 +366,11 @@ pub struct Frame {
 impl Frame {
     pub const HEADER_SIZE: usize = 64;  // ✅ CORRECTO
 }</code></pre>
-<p>---</p>
-<h2 id="adr-012-v2-1-security-protocol-correctness">ADR-012: v2.1 Security/Protocol Correctness</h2>
+<hr>
+<h2 id="adr-012-v21-securityprotocol-correctness">ADR-012: v2.1 Security/Protocol Correctness</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23 <strong>Revisión</strong>: Basado en revision-2.txt</p>
 <h3 id="cambios-de-protocolo">Cambios de Protocolo</h3>
-<h4 id="1-packettype-sin-colisi-n">1. PacketType Sin Colisión</h4>
+<h4 id="1-packettype-sin-colision">1. PacketType Sin Colisión</h4>
 <pre><code>Close          0x00
 Hello          0x01
 HelloAck       0x02
@@ -345,8 +411,8 @@ Lógica:
 - sequence &lt;= highest - window → reject
 - sequence already received → reject
 - otherwise → accept y actualizar bitmap</code></pre>
-<h4 id="3-nonce-vinculado-a-sesi-n">3. Nonce Vinculado a Sesión</h4>
-<pre><code class="language-rust">pub fn derive_nonce(&amp;self, direction: u8) -&gt; [u8; 12] {
+<h4 id="3-nonce-vinculado-a-sesion">3. Nonce Vinculado a Sesión</h4>
+<pre><code class="lang-rust">pub fn derive_nonce(&amp;self, direction: u8) -&gt; [u8; 12] {
     // nonce = BLAKE3(session_id || sequence || direction)
     let mut hasher = Hasher::new();
     hasher.update(b&quot;CBC2-NONCE&quot;);
@@ -366,7 +432,7 @@ payload_length (4) | schema_id (2) | contract_hash_prefix (12)</code></pre>
 <h3 id="cambios-de-seguridad">Cambios de Seguridad</h3>
 <ul><li>Eliminación completa de <code>unwrap()</code> en parsing de datos remotos</li><li>Validación explícita de <code>MAX_PAYLOAD_SIZE = 16 MB</code></li><li>FrameFlags con validación de bits desconocidos (reject-by-default)</li><li>HMAC con implementación formal usando crate <code>hmac</code></li></ul>
 <h3 id="errores-de-protocolo-expandidos">Errores de Protocolo Expandidos</h3>
-<pre><code class="language-rust">pub enum ProtocolError {
+<pre><code class="lang-rust">pub enum ProtocolError {
     FrameTooShort,
     InvalidMagic,
     IncompatibleVersion(u8),
@@ -381,8 +447,8 @@ payload_length (4) | schema_id (2) | contract_hash_prefix (12)</code></pre>
     ParseError(&amp;&#x27;static str),
     InvalidNonce,
 }</code></pre>
-<p>---</p>
-<h2 id="adr-013-herramientas-cli-de-verificaci-n">ADR-013: Herramientas CLI de Verificación</h2>
+<hr>
+<h2 id="adr-013-herramientas-cli-de-verificacion">ADR-013: Herramientas CLI de Verificación</h2>
 <p><strong>Estado</strong>: Aceptado <strong>Fecha</strong>: 2025-09-23</p>
 <h3 id="contractc-verify">contractc verify</h3>
 <p>Verifica integridad de un archivo <code>.cbc</code>:</p>
@@ -446,9 +512,79 @@ b3:a1b2c3d4e5f6...7890abcdef</code></pre>
 <pre><code>contractc generate contract.cbc --target rust
 contractc generate contract.cbc --target kotlin
 contractc generate contract.cbc --target cpp</code></pre>
-<p>---</p>
+<hr>
 <h2 id="resumen-de-decisiones">Resumen de Decisiones</h2>
-<div class="table-wrap"><table><thead><tr><th>ADR</th><th>Título</th><th>Estado</th></tr></thead><tbody><tr><td>001</td><td>Comunicación Sin FFI</td><td>Aceptado</td></tr><tr><td>002</td><td>Contratos Binarios Canónicos</td><td>Aceptado</td></tr><tr><td>003</td><td>IDs Numéricos para Tipos</td><td>Aceptado</td></tr><tr><td>004</td><td>Seguridad Criptográfica Real</td><td>Aceptado</td></tr><tr><td>005</td><td>Key Derivation desde Seed</td><td>Aceptado</td></tr><tr><td>006</td><td>Modos de Ejecución</td><td>Aceptado</td></tr><tr><td>007</td><td>Roles de Contrato</td><td>Aceptado</td></tr><tr><td>008</td><td>Anti-Replay Protection</td><td>Aceptado</td></tr><tr><td>009</td><td>DSL de Contratos</td><td>Aceptado</td></tr><tr><td>010</td><td>Generadores de Código</td><td>Aceptado</td></tr><tr><td>011</td><td>Bug Buffer Overflow</td><td>Corregido</td></tr><tr><td>012</td><td>v2.1 Security/Protocol Correctness</td><td>Aceptado</td></tr><tr><td>013</td><td>Herramientas CLI de Verificación</td><td>Aceptado</td></tr></tbody></table></div>
-<p>---</p>
+<table><thead><tr>
+<th>ADR</th>
+<th>Título</th>
+<th>Estado</th>
+</tr></thead><tbody>
+<tr>
+<td>001</td>
+<td>Comunicación Sin FFI</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>002</td>
+<td>Contratos Binarios Canónicos</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>003</td>
+<td>IDs Numéricos para Tipos</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>004</td>
+<td>Seguridad Criptográfica Real</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>005</td>
+<td>Key Derivation desde Seed</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>006</td>
+<td>Modos de Ejecución</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>007</td>
+<td>Roles de Contrato</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>008</td>
+<td>Anti-Replay Protection</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>009</td>
+<td>DSL de Contratos</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>010</td>
+<td>Generadores de Código</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>011</td>
+<td>Bug Buffer Overflow</td>
+<td>Corregido</td>
+</tr>
+<tr>
+<td>012</td>
+<td>v2.1 Security/Protocol Correctness</td>
+<td>Aceptado</td>
+</tr>
+<tr>
+<td>013</td>
+<td>Herramientas CLI de Verificación</td>
+<td>Aceptado</td>
+</tr>
+</tbody></table>
+<hr>
 <h2 id="referencias">Referencias</h2>
-<ul><li>Protocolo: <code>docs/PROTOCOL.md</code></li><li>Seguridad: <code>docs/SECURITY.md</code></li><li>Contratos: <code>docs/CONTRACTS.md</code></li><li>DSL: <code>DSL.md</code></li></ul><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
+<ul><li>Protocolo: <code>docs/PROTOCOL.md</code></li><li>Seguridad: <code>docs/SECURITY.md</code></li><li>Contratos: <code>docs/CONTRACTS.md</code></li><li>DSL: <code>DSL.md</code></li></ul><footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

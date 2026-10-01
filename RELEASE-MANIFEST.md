@@ -2,15 +2,20 @@
 
 Estado: **pre-release**
 
-## Distribución validada
+## Distribución canónica
 
-- Archivo: `ipc_lib_contracts_v2.1.1-final.zip`
-- SHA-256: `7c964f4d8e7bdca5402dc06306bd7f91f6c06bbcf92d34160b29e1ff1e4bb43d`
-- Tamaño aproximado: 304 KiB
-- Archivos del paquete: 72
-- Documentación estática: `docs/site/`
-- Páginas HTML verificadas: 14
-- Enlaces internos rotos: 0
+- Archivo: `ipc_lib_contracts_v2.1.1-reviewed-2-reproducible.zip`
+- SHA-256: `d2a9ab38e5673d549bf994b03ed014332196b5c6de9a9cb4a9bb2834a2a6c106`
+- Tamaño: `271988` bytes
+- Archivos del paquete: `71`
+- Documentación estática: `docs/site/` (14 páginas, incluida `index.html`)
+- Generación del sitio: `python3 tools/render_docs.py` — determinista y sin dependencias externas
+- Enlaces internos y anclas rotos: 0
+
+El archivo canónico se construye con las rutas ordenadas, marcas de tiempo
+normalizadas y el contenido del árbol publicado, excluyendo únicamente este
+manifiesto. Se excluye para evitar una autorreferencia imposible al calcular su
+propio SHA-256; el manifiesto versionado en Git es la metadata de distribución.
 
 ## Componentes
 
@@ -20,20 +25,49 @@ Estado: **pre-release**
 - Vectores dorados: `tests/vectors/crypto.json`.
 - Contrato de ejemplo: `contracts/image_processor.contract`.
 - Documentación normativa: `docs/`, `docs/wiki/`.
-- Sitio offline: `docs/site/`.
+- Sitio offline: `docs/site/`, regenerable con `tools/render_docs.py`.
+- Generador de documentación: `tools/render_docs.py`.
+
+## Reproducibilidad y versiones
+
+- La fuente de verdad es el árbol completo de `main`; no se reconstruye el
+  proyecto desde un manifiesto.
+- La segunda ejecución consecutiva del generador produjo exactamente los
+  mismos bytes que la primera.
+- El sitio publicado usa únicamente los nombres actuales (`get-started.html`,
+  `implementation.html`, `integration.html`, `roadmap.html`,
+  `security-wiki.html` y `usage.html`); no se conservan las páginas con slugs
+  transliterados incorrectamente.
+- `run_all_tests.sh` falla explícitamente cuando falta una herramienta y el
+  gate de CMake exige que `ctest` encuentre tests reales.
+- No se mantienen hashes ni nombres de artefactos anteriores en la versión
+  canónica.
 
 ## Verificación registrada
 
-La distribución fue validada previamente con gates de Rust, C++, BLAKE3, conformidad C++ y Kotlin. La publicación actual del repositorio debe considerarse una etapa de distribución separada de esa ejecución de pruebas.
+Los nueve gates se ejecutaron y pasaron el 2026-09-30 contra una extracción
+limpia del árbol revisado, con toolchain completo:
 
-## Nota de publicación
+| Gate | Resultado |
+|---|---|
+| `cargo check --all-targets --all-features` | 0 errores |
+| `cargo test --all-features` | 53 tests, 0 fallos |
+| g++ `-Wall` sobre los bindings | 0 warnings |
+| Vectores BLAKE3 oficiales | coinciden |
+| Conformidad C++ | 18 checks, 0 fallos |
+| CMake + ctest | 100% tests passed (2 tests) |
+| Compilación Kotlin | correcta |
+| Conformidad Kotlin | 39 checks, 0 fallos |
 
-El conector GitHub disponible permite crear blobs y archivos de texto, pero no expone una operación de carga directa del ZIP binario local ni de assets de release. Por ello, este manifiesto registra el artefacto y su identidad criptográfica sin afirmar que el ZIP esté almacenado actualmente en este repositorio.
+Toolchain usado: Rust 1.98.1, GCC 12.2, CMake 3.25.1, OpenSSL 3.0.20,
+JDK 17.0.2, Kotlin 1.9.24, kotlinx-coroutines 1.8.1.
 
-La fuente de verdad prevista sigue siendo el árbol completo del proyecto; no se debe reconstruir el ZIP desde este manifiesto.
+## Riesgos abiertos
 
-## Recuperación de la carga fallida
+La verificación no resuelve dos asuntos documentados en el proyecto:
 
-La publicación de `main` reutiliza este manifiesto y recupera el árbol completo desde el archivo recibido `ipc_lib_contracts_v2.1.1-final-download.zip`. Ese archivo descargado no es byte a byte el artefacto identificado en la sección anterior: su SHA-256 es `4dae81ac90f4a0482dff2051aa0bd1c45e716f262e39f8452b3ea68ea9238fe2` y contiene 70 archivos del proyecto (sin contar este manifiesto ni la metadata del repositorio). Por tanto, no se sustituye la identidad criptográfica histórica ni se presenta el ZIP descargado como el artefacto original.
+1. `ContractReader::from_bytes` todavía no verifica la firma.
+2. BLAKE3 lanza una excepción al superar 1 KiB.
 
-La comprobación `cargo test --all-features` no pudo ejecutarse en el entorno de publicación porque `cargo` no está instalado. La compilación completa de C++ tampoco pudo ejecutarse porque faltan las cabeceras de OpenSSL; el vector aislado de BLAKE3 sí terminó con `ALL PASS (0 failures)`. La revisión estática no detectó archivos con nombres de credenciales (`.env`, claves, certificados o tokens) dentro del ZIP.
+Ambos quedan fuera de esta publicación y deben corregirse antes de declarar una
+versión estable.

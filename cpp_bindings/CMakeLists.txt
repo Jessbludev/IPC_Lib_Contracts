@@ -18,6 +18,9 @@ endif()
 # Opciones
 option(IPC_USE_OPENSSL "Usar OpenSSL para criptografía" ON)
 option(IPC_BUILD_SHARED "Construir como biblioteca compartida" OFF)
+# OFF por defecto para no arrastrar gtest a quien sólo consume la biblioteca.
+# El runner de CI y la documentación lo activan explícitamente con
+# -DIPC_BUILD_TESTS=ON.
 option(IPC_BUILD_TESTS "Construir tests" OFF)
 
 # ============================================================================

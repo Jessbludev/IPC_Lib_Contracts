@@ -317,11 +317,3 @@ let result = session.call("resize", payload)?;
 ## License
 
 MIT OR Apache-2.0
-
-## Documentación visual offline
-
-Abre `docs/site/index.html` para consultar la documentación estática del proyecto sin conexión.
-
-## Publicación
-
-El árbol publicado se recuperó desde la distribución suministrada y se conserva junto con el [manifiesto de release](RELEASE-MANIFEST.md). La validación de toolchains debe ejecutarse en un entorno con Rust, C++, CMake y Kotlin disponibles.

@@ -1,1 +1,40 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IPC Lib Contracts — documentación</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1>IPC Lib Contracts</h1><p>Documentación visual y offline del sistema de contratos binarios canónicos para IPC.</p><h2>Versión</h2><p><strong>2.1.1 — pre-release</strong></p><h2>Arquitectura documental</h2><p>La documentación fuente permanece en <code>README.md</code>, <code>DSL.md</code>, <code>docs/</code> y <code>docs/wiki/</code>. Esta carpeta contiene únicamente su representación HTML estática.</p><h2>Principios</h2><ul><li>Contrato binario canónico.</li><li>Identidad mediante BLAKE3-256.</li><li>Validación explícita y rechazo seguro de entradas inválidas.</li><li>Conformidad cruzada entre Rust, C++ y Kotlin.</li><li>Documentación sin CDN ni JavaScript externo.</li></ul><footer>IPC Lib Contracts · documentación offline · 2.1.1 pre-release</footer></main></div></body></html>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Documentación — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html">Seguridad (Wiki)</a></aside><main class="main">
+<h1>IPC Contract System</h1>
+<p>Sistema de contratos binarios canónicos con seguridad criptográfica real
+para comunicación inter-procesos, sin FFI ni NDK.</p>
+
+<h2 id="estado">Estado</h2>
+<p><strong>2.1.1 — pre-release.</strong> La capa de contrato y
+criptografía está completa y verificada con conformidad cruzada entre Rust,
+C++ y Kotlin. El transporte todavía no está implementado.</p>
+<p>Antes de integrar, lee la <a href="roadmap.html">hoja de ruta</a>: enumera
+con precisión qué funciona y qué no.</p>
+
+<h2 id="empezar">Empezar</h2>
+<ul>
+<li><a href="get-started.html">Primeros pasos</a> — requisitos, instalación y
+primer contrato</li>
+<li><a href="usage.html">Uso</a> — referencia de la CLI y de las APIs</li>
+<li><a href="integration.html">Integración</a> — insertarlo en tu aplicación</li>
+</ul>
+
+<h2 id="referencia">Referencia</h2>
+<ul>
+<li><a href="implementation.html">Implementación</a> — formato CBC1, frames,
+criptografía</li>
+<li><a href="dsl.html">DSL</a> — sintaxis del lenguaje de contratos</li>
+<li><a href="contratos.html">Contratos</a> — formato binario</li>
+<li><a href="protocolo.html">Protocolo</a> — handshake y framing</li>
+<li><a href="security-wiki.html">Seguridad</a> — políticas y modelo de amenaza</li>
+<li><a href="adr.html">ADR</a> — decisiones de arquitectura</li>
+</ul>
+
+<h2 id="verificar">Verificar</h2>
+<p>El repositorio incluye un runner de nueve gates que compila y prueba los
+tres lenguajes:</p>
+<pre><code>./run_all_tests.sh</code></pre>
+<p>Los tests de conformidad fallan si algún binding diverge de la
+referencia en Rust. Eso no es un problema de estilo: significa que un
+componente acepta algo que otro rechaza.</p>
+<footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

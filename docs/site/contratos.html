@@ -1,4 +1,5 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contratos — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="sistema-de-contratos-binarios-can-nicos">Sistema de Contratos Binarios Canónicos</h1>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contratos — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html" class="on">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html">Seguridad (Wiki)</a></aside><main class="main"><h1 id="sistema-de-contratos-binarios-canonicos">Sistema de Contratos Binarios Canónicos</h1>
 <h2 id="conceptos-fundamentales">Conceptos Fundamentales</h2>
 <p>El sistema de contratos binarios canónicos (CBC) proporciona un mecanismo para definir interfaces de comunicación entre procesos de forma inmutable, versionada y criptográficamente verificable.</p>
 <h3 id="inmutabilidad-del-contrato">Inmutabilidad del Contrato</h3>
@@ -22,9 +23,29 @@
 │                                         │  - Distribuido        │    │
 │                                         └───────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
-<h3 id="versionado-sem-ntico">Versionado Semántico</h3>
+<h3 id="versionado-semantico">Versionado Semántico</h3>
 <p>Los contratos siguen versionado semántico (SemVer):</p>
-<div class="table-wrap"><table><thead><tr><th>Formato</th><th>Descripción</th></tr></thead><tbody><tr><td><code>major.minor.patch</code></td><td>Ejemplo: <code>1.2.3</code></td></tr><tr><td><code>major</code></td><td>Cambios incompatibles en la API</td></tr><tr><td><code>minor</code></td><td>Nuevas funcionalidades compatibles</td></tr><tr><td><code>patch</code></td><td>Correcciones compatibles</td></tr></tbody></table></div>
+<table><thead><tr>
+<th>Formato</th>
+<th>Descripción</th>
+</tr></thead><tbody>
+<tr>
+<td><code>major.minor.patch</code></td>
+<td>Ejemplo: <code>1.2.3</code></td>
+</tr>
+<tr>
+<td><code>major</code></td>
+<td>Cambios incompatibles en la API</td>
+</tr>
+<tr>
+<td><code>minor</code></td>
+<td>Nuevas funcionalidades compatibles</td>
+</tr>
+<tr>
+<td><code>patch</code></td>
+<td>Correcciones compatibles</td>
+</tr>
+</tbody></table>
 <p><strong>Reglas de Compatibilidad:</strong></p>
 <ul><li>Cambio en <code>patch</code>: Compatible hacia atrás</li><li>Cambio en <code>minor</code>: Compatible hacia atrás, nuevo <code>minor</code> requiere nuevo contrato</li><li>Cambio en <code>major</code>: Incompatible, requiere nuevo contrato</li></ul>
 <h2 id="formato-cbc-canonical-binary-contract">Formato CBC (Canonical Binary Contract)</h2>
@@ -42,7 +63,7 @@
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
 <h3 id="header-256-bytes">Header (256 bytes)</h3>
-<pre><code class="language-rust">pub struct ContractHeader {
+<pre><code class="lang-rust">pub struct ContractHeader {
     // Identificación (16 bytes)
     pub magic: [u8; 4],              // &quot;CBC1&quot;
     pub format_version: u8,            // 0x01
@@ -73,9 +94,9 @@
     // Reserved (hasta 256 bytes)
     reserved: [u8; 128],
 }</code></pre>
-<h3 id="secci-n-de-tipos">Sección de Tipos</h3>
+<h3 id="seccion-de-tipos">Sección de Tipos</h3>
 <p>Cada tipo tiene un ID numérico único asignado por el compilador:</p>
-<pre><code class="language-rust">pub struct TypeDefinition {
+<pre><code class="lang-rust">pub struct TypeDefinition {
     pub type_id: u16,           // 0x0001 - 0xFFFF
     pub name_length: u8,
     pub name: String,
@@ -91,9 +112,79 @@ pub enum TypeKind {
     Map { key_type: u16, value_type: u16 },
 }</code></pre>
 <p><strong>IDs de Tipos Primitivos:</strong></p>
-<div class="table-wrap"><table><thead><tr><th>ID</th><th>Tipo</th><th>Descripción</th></tr></thead><tbody><tr><td>0x0001</td><td>U8</td><td>Entero sin signo 8-bit</td></tr><tr><td>0x0002</td><td>U16</td><td>Entero sin signo 16-bit</td></tr><tr><td>0x0003</td><td>U32</td><td>Entero sin signo 32-bit</td></tr><tr><td>0x0004</td><td>U64</td><td>Entero sin signo 64-bit</td></tr><tr><td>0x0005</td><td>I8</td><td>Entero con signo 8-bit</td></tr><tr><td>0x0006</td><td>I16</td><td>Entero con signo 16-bit</td></tr><tr><td>0x0007</td><td>I32</td><td>Entero con signo 32-bit</td></tr><tr><td>0x0008</td><td>I64</td><td>Entero con signo 64-bit</td></tr><tr><td>0x0009</td><td>F32</td><td>Flotante 32-bit IEEE 754</td></tr><tr><td>0x000A</td><td>F64</td><td>Flotante 64-bit IEEE 754</td></tr><tr><td>0x000B</td><td>Bool</td><td>Booleano</td></tr><tr><td>0x000C</td><td>String</td><td>String UTF-8</td></tr><tr><td>0x000D</td><td>Bytes</td><td>Datos binarios</td></tr></tbody></table></div>
-<h3 id="secci-n-de-operaciones">Sección de Operaciones</h3>
-<pre><code class="language-rust">pub struct OperationDefinition {
+<table><thead><tr>
+<th>ID</th>
+<th>Tipo</th>
+<th>Descripción</th>
+</tr></thead><tbody>
+<tr>
+<td>0x0001</td>
+<td>U8</td>
+<td>Entero sin signo 8-bit</td>
+</tr>
+<tr>
+<td>0x0002</td>
+<td>U16</td>
+<td>Entero sin signo 16-bit</td>
+</tr>
+<tr>
+<td>0x0003</td>
+<td>U32</td>
+<td>Entero sin signo 32-bit</td>
+</tr>
+<tr>
+<td>0x0004</td>
+<td>U64</td>
+<td>Entero sin signo 64-bit</td>
+</tr>
+<tr>
+<td>0x0005</td>
+<td>I8</td>
+<td>Entero con signo 8-bit</td>
+</tr>
+<tr>
+<td>0x0006</td>
+<td>I16</td>
+<td>Entero con signo 16-bit</td>
+</tr>
+<tr>
+<td>0x0007</td>
+<td>I32</td>
+<td>Entero con signo 32-bit</td>
+</tr>
+<tr>
+<td>0x0008</td>
+<td>I64</td>
+<td>Entero con signo 64-bit</td>
+</tr>
+<tr>
+<td>0x0009</td>
+<td>F32</td>
+<td>Flotante 32-bit IEEE 754</td>
+</tr>
+<tr>
+<td>0x000A</td>
+<td>F64</td>
+<td>Flotante 64-bit IEEE 754</td>
+</tr>
+<tr>
+<td>0x000B</td>
+<td>Bool</td>
+<td>Booleano</td>
+</tr>
+<tr>
+<td>0x000C</td>
+<td>String</td>
+<td>String UTF-8</td>
+</tr>
+<tr>
+<td>0x000D</td>
+<td>Bytes</td>
+<td>Datos binarios</td>
+</tr>
+</tbody></table>
+<h3 id="seccion-de-operaciones">Sección de Operaciones</h3>
+<pre><code class="lang-rust">pub struct OperationDefinition {
     pub operation_id: u16,       // 0x0001 - 0xFFFF
     pub name_length: u8,
     pub name: String,
@@ -244,9 +335,9 @@ pub enum OperationRole {
 │   - No requiere ACK                                                  │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
-<h2 id="ejemplo-compilaci-n-de-contrato">Ejemplo: Compilación de Contrato</h2>
+<h2 id="ejemplo-compilacion-de-contrato">Ejemplo: Compilación de Contrato</h2>
 <h3 id="entrada-dsl">Entrada (DSL)</h3>
-<pre><code class="language-dsl">contract &quot;calculator&quot; {
+<pre><code class="lang-dsl">contract &quot;calculator&quot; {
     version 1.0.0
     namespace &quot;com.example&quot;
     role mutual
@@ -288,7 +379,7 @@ pub enum OperationRole {
 [INFO] Contrato binario: output/calculator.cbc
 [INFO] Tamaño total: 1,247 bytes</code></pre>
 <h3 id="contenido-binario">Contenido Binario</h3>
-<pre><code class="language-hex"># Magic (4 bytes)
+<pre><code class="lang-hex"># Magic (4 bytes)
 43 42 43 31                                        # &quot;CBC1&quot;
 
 # Header (256 bytes)
@@ -303,16 +394,16 @@ a3 f8 b2 c1 d4 e5 f6 ...                           # BLAKE3-256
 
 # Operaciones
 01 07 63 6f 6d 70 75 74 65                       # Op: compute</code></pre>
-<h2 id="validaci-n-de-contrato">Validación de Contrato</h2>
+<h2 id="validacion-de-contrato">Validación de Contrato</h2>
 <h3 id="hash-del-contrato">Hash del Contrato</h3>
 <p>El hash se calcula sobre todo el contrato excepto la firma:</p>
-<pre><code class="language-rust">pub fn calculate_contract_hash(contract: &amp;[u8]) -&gt; [u8; 32] {
+<pre><code class="lang-rust">pub fn calculate_contract_hash(contract: &amp;[u8]) -&gt; [u8; 32] {
     // Excluir últimos 64 bytes (firma)
     let data_to_hash = &amp;contract[..contract.len() - 64];
     sha256(data_to_hash)
 }</code></pre>
 <h3 id="firma-digital-opcional">Firma Digital (Opcional)</h3>
-<pre><code class="language-rust">use ed25519_dalek::{Signer, SigningKey};
+<pre><code class="lang-rust">use ed25519_dalek::{Signer, SigningKey};
 
 //Firmar contrato
 let signing_key = SigningKey::from_bytes(&amp;key_bytes);
@@ -320,8 +411,8 @@ let signature = signing_key.sign(contract_hash);
 
 let mut final_contract = contract.to_vec();
 final_contract[contract.len() - 64..].copy_from_slice(&amp;signature.to_bytes());</code></pre>
-<h3 id="verificaci-n-en-runtime">Verificación en Runtime</h3>
-<pre><code class="language-rust">pub fn verify_contract(contract: &amp;[u8], public_key: &amp;[u8; 32]) -&gt; Result&lt;()&gt; {
+<h3 id="verificacion-en-runtime">Verificación en Runtime</h3>
+<pre><code class="lang-rust">pub fn verify_contract(contract: &amp;[u8], public_key: &amp;[u8; 32]) -&gt; Result&lt;()&gt; {
     // 1. Verificar magic
     if &amp;contract[..4] != b&quot;CBC1&quot; {
         return Err(ContractError::InvalidMagic);
@@ -346,9 +437,9 @@ final_contract[contract.len() - 64..].copy_from_slice(&amp;signature.to_bytes())
 
     Ok(())
 }</code></pre>
-<h2 id="integraci-n-con-runtime">Integración con Runtime</h2>
+<h2 id="integracion-con-runtime">Integración con Runtime</h2>
 <h3 id="carga-de-contrato">Carga de Contrato</h3>
-<pre><code class="language-rust">use std::fs;
+<pre><code class="lang-rust">use std::fs;
 use std::path::Path;
 
 pub struct ContractLoader {
@@ -367,8 +458,8 @@ impl ContractLoader {
         self.parse(data)
     }
 }</code></pre>
-<h3 id="sesi-n-de-contrato">Sesión de Contrato</h3>
-<pre><code class="language-rust">pub struct ContractSession {
+<h3 id="sesion-de-contrato">Sesión de Contrato</h3>
+<pre><code class="lang-rust">pub struct ContractSession {
     contract: Contract,
     session_id: u64,
     role: ContractRole,
@@ -397,7 +488,7 @@ impl ContractSession {
 }</code></pre>
 <h2 id="best-practices">Best Practices</h2>
 <h3 id="1-versionado-correcto">1. Versionado Correcto</h3>
-<pre><code class="language-dsl"># INCORRECTO: Cambiar operación sin incrementar versión
+<pre><code class="lang-dsl"># INCORRECTO: Cambiar operación sin incrementar versión
 contract &quot;service&quot; {
     version 1.0.0
     operation old_op { ... }  // Cambiar a new_op
@@ -409,7 +500,7 @@ contract &quot;service&quot; {
     operation new_op { ... }  // Nuevo contrato
 }</code></pre>
 <h3 id="2-tipos-descriptivos">2. Tipos Descriptivos</h3>
-<pre><code class="language-dsl"># INCORRECTO: Tipos genéricos
+<pre><code class="lang-dsl"># INCORRECTO: Tipos genéricos
 type Request { data: bytes }
 type Response { data: bytes }
 
@@ -417,26 +508,71 @@ type Response { data: bytes }
 type ImageResizeRequest { image: Image, width: u32, height: u32 }
 type ImageResizeResponse { result: Image, processing_time_ms: u64 }</code></pre>
 <h3 id="3-timeouts-razonables">3. Timeouts Razonables</h3>
-<pre><code class="language-dsl"># Operación rápida
+<pre><code class="lang-dsl"># Operación rápida
 operation ping { output bool, timeout 100ms }
 
 # Operación que puede tomar tiempo
 operation process_video { input Video, output Video, timeout 300s }</code></pre>
 <h3 id="4-idempotencia-documentada">4. Idempotencia Documentada</h3>
-<pre><code class="language-dsl"># Idempotente: seguro repetir
+<pre><code class="lang-dsl"># Idempotente: seguro repetir
 operation get_balance { input AccountId, output Balance, idempotent true }
 
 # No idempotente: efectos secundarios
 operation transfer_funds { input Transfer, output Receipt, idempotent false }</code></pre>
-<h2 id="comparaci-n-de-formatos">Comparación de Formatos</h2>
-<div class="table-wrap"><table><thead><tr><th>Aspecto</th><th>YAML</th><th>JSON</th><th>CBC (Binario)</th></tr></thead><tbody><tr><td>Legible por humanos</td><td>Si</td><td>Si</td><td>No</td></tr><tr><td>Tamaño</td><td>Grande</td><td>Medio</td><td>Pequeño</td></tr><tr><td>Parseo</td><td>Lento</td><td>Medio</td><td>Rápido</td></tr><tr><td>Validación de tipos</td><td>Runtime</td><td>Runtime</td><td>Compile-time</td></tr><tr><td>IDs numéricos</td><td>No</td><td>No</td><td>Si</td></tr><tr><td>Hash criptográfico</td><td>No</td><td>No</td><td>Si</td></tr><tr><td>Firma digital</td><td>No</td><td>No</td><td>Si</td></tr></tbody></table></div>
-<h2 id="pr-ximos-pasos">Próximos Pasos</h2>
-<ol><li><strong>Compilar contrato de ejemplo:</strong></li></ol>
-<p>   ``<code>bash    contractc compile contracts/image_processor.contract -o output/    </code>``</p>
-<ol><li><strong>Generar bindings:</strong></li></ol>
-<p>   ``<code>bash    contractc generate output/image_processor.cbc --target rust -o generated/    contractc generate output/image_processor.cbc --target kotlin -o generated/    </code>``</p>
-<ol><li><strong>Verificar contrato:</strong></li></ol>
-<p>   ``<code>bash    contractc validate output/image_processor.cbc --verify-signature    </code>``</p>
-<ol><li><strong>Usar en runtime:</strong></li></ol>
-<p>   ```rust    use ipc_contract_system::{Contract, ContractSession};</p>
-<p>   let contract = Contract::load("output/image_processor.cbc")?;    let mut session = ContractSession::new(contract, session_id)?;    ```</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
+<h2 id="comparacion-de-formatos">Comparación de Formatos</h2>
+<table><thead><tr>
+<th>Aspecto</th>
+<th>YAML</th>
+<th>JSON</th>
+<th>CBC (Binario)</th>
+</tr></thead><tbody>
+<tr>
+<td>Legible por humanos</td>
+<td>Si</td>
+<td>Si</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Tamaño</td>
+<td>Grande</td>
+<td>Medio</td>
+<td>Pequeño</td>
+</tr>
+<tr>
+<td>Parseo</td>
+<td>Lento</td>
+<td>Medio</td>
+<td>Rápido</td>
+</tr>
+<tr>
+<td>Validación de tipos</td>
+<td>Runtime</td>
+<td>Runtime</td>
+<td>Compile-time</td>
+</tr>
+<tr>
+<td>IDs numéricos</td>
+<td>No</td>
+<td>No</td>
+<td>Si</td>
+</tr>
+<tr>
+<td>Hash criptográfico</td>
+<td>No</td>
+<td>No</td>
+<td>Si</td>
+</tr>
+<tr>
+<td>Firma digital</td>
+<td>No</td>
+<td>No</td>
+<td>Si</td>
+</tr>
+</tbody></table>
+<h2 id="proximos-pasos">Próximos Pasos</h2>
+<ol><li><strong>Compilar contrato de ejemplo:</strong> ``<code>bash contractc compile contracts/image_processor.contract -o output/ </code>``</li></ol>
+<ol><li><strong>Generar bindings:</strong> ``<code>bash contractc generate output/image_processor.cbc --target rust -o generated/ contractc generate output/image_processor.cbc --target kotlin -o generated/ </code>``</li></ol>
+<ol><li><strong>Verificar contrato:</strong> ``<code>bash contractc validate output/image_processor.cbc --verify-signature </code>``</li></ol>
+<ol><li><strong>Usar en runtime:</strong> ```rust use ipc_contract_system::{Contract, ContractSession};</li></ol>
+<p>let contract = Contract::load(&quot;output/image_processor.cbc&quot;)?; let mut session = ContractSession::new(contract, session_id)?;</p>
+<pre><code></code></pre><footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

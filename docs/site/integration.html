@@ -1,15 +1,36 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Integración — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="integraci-n">Integración</h1>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Integración — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html" class="on">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html">Seguridad (Wiki)</a></aside><main class="main"><h1 id="integracion">Integración</h1>
 <p>Cómo usar este sistema desde tu aplicación.</p>
-<h2 id="elegir-por-d-nde-empezar">Elegir por dónde empezar</h2>
-<div class="table-wrap"><table><thead><tr><th>Situación</th><th>Recomendación</th></tr></thead><tbody><tr><td>Aplicación nueva, un solo lenguaje</td><td><strong>Rust.</strong> Es el único camino completo hoy</td></tr><tr><td>Integrar un componente existente en C++</td><td>Bindings C++ para contrato y criptografía. El transporte lo escribes tú</td></tr><tr><td>App Android o JVM</td><td>Bindings Kotlin. Cripto vía JCA, sin dependencias externas</td></tr><tr><td>Multi-lenguaje con identidad compartida</td><td>Los tres, con los vectores dorados como contrato entre ellos</td></tr></tbody></table></div>
-<p><strong>El transporte todavía no existe.</strong> Los bindings te dan contrato, criptografía y framing; abrir un canal es trabajo tuyo. Ver <a href="hoja-de-ruta.html">Hoja de ruta</a>.</p>
+<h2 id="elegir-por-donde-empezar">Elegir por dónde empezar</h2>
+<table><thead><tr>
+<th>Situación</th>
+<th>Recomendación</th>
+</tr></thead><tbody>
+<tr>
+<td>Aplicación nueva, un solo lenguaje</td>
+<td><strong>Rust.</strong> Es el único camino completo hoy</td>
+</tr>
+<tr>
+<td>Integrar un componente existente en C++</td>
+<td>Bindings C++ para contrato y criptografía. El transporte lo escribes tú</td>
+</tr>
+<tr>
+<td>App Android o JVM</td>
+<td>Bindings Kotlin. Cripto vía JCA, sin dependencias externas</td>
+</tr>
+<tr>
+<td>Multi-lenguaje con identidad compartida</td>
+<td>Los tres, con los vectores dorados como contrato entre ellos</td>
+</tr>
+</tbody></table>
+<p><strong>El transporte todavía no existe.</strong> Los bindings te dan contrato, criptografía y framing; abrir un canal es trabajo tuyo. Ver <a href="roadmap.html">Hoja de ruta</a>.</p>
 <h2 id="rust">Rust</h2>
-<pre><code class="language-toml">[dependencies]
+<pre><code class="lang-toml">[dependencies]
 ipc-contract-system = { path = &quot;../ipc-lib-contracts&quot; }
 ed25519-dalek = &quot;2&quot;</code></pre>
-<h3 id="generar-y-proteger-el-secreto-ra-z">Generar y proteger el secreto raíz</h3>
+<h3 id="generar-y-proteger-el-secreto-raiz">Generar y proteger el secreto raíz</h3>
 <p>Es lo más importante que hagas bien. <code>kd_secret</code> es la raíz de toda la jerarquía de claves.</p>
-<pre><code class="language-rust">use rand::RngCore;
+<pre><code class="lang-rust">use rand::RngCore;
 
 fn generate_kd_secret() -&gt; [u8; 32] {
     let mut secret = [0u8; 32];
@@ -18,11 +39,11 @@ fn generate_kd_secret() -&gt; [u8; 32] {
 }</code></pre>
 <p>En móvil, sella el secreto con el Keystore:</p>
 <ul><li><strong>Android</strong>: <code>AndroidKeyStore</code>, con <code>setUserAuthenticationRequired(true)</code> si</li></ul>
-<p>  quieres exigir biometría.</p>
+<p>quieres exigir biometría.</p>
 <ul><li><strong>iOS</strong>: <code>Secure Enclave</code> vía Keychain, con <code>kSecAccessControl</code>.</li></ul>
 <p>No lo guardes en <code>SharedPreferences</code> en claro ni en el bundle.</p>
-<h3 id="estructura-t-pica">Estructura típica</h3>
-<pre><code class="language-rust">pub struct SecureChannel {
+<h3 id="estructura-tipica">Estructura típica</h3>
+<pre><code class="lang-rust">pub struct SecureChannel {
     contract: Contract,
     kd: KeyDerivation,
     session_id: u64,
@@ -70,18 +91,18 @@ impl SecureChannel {
     }
 }</code></pre>
 <p><code>next_sequence()</code> debe ser monótono y persistente. Si se reinicia a cero bajo la misma clave de sesión, los nonces se repiten y AEAD se rompe. Ante duda, deriva una clave de sesión nueva.</p>
-<h3 id="zero-log-en-tu-aplicaci-n">Zero-log en tu aplicación</h3>
+<h3 id="zero-log-en-tu-aplicacion">Zero-log en tu aplicación</h3>
 <p>La librería no registra nada, y eso es deliberado. La observabilidad la instalas tú:</p>
-<pre><code class="language-rust">tracing_subscriber::fmt()
+<pre><code class="lang-rust">tracing_subscriber::fmt()
     .with_max_level(tracing::Level::Info)
     .with_filter(/* nunca claves, hashes completos ni payloads */)
     .init();</code></pre>
 <p>Nunca registres: material de clave, <code>contract_hash</code> completo, plaintext ni ciphertext. El prefijo de 12 bytes sí es apto para trazas, precisamente porque no es identidad.</p>
 <h2 id="c">C++</h2>
-<pre><code class="language-cmake">add_subdirectory(ipc-lib-contracts/cpp_bindings)
+<pre><code class="lang-cmake">add_subdirectory(ipc-lib-contracts/cpp_bindings)
 target_link_libraries(mi_app PRIVATE ipc::contract ipc::security)</code></pre>
 <h3 id="cargar-y-verificar-un-contrato">Cargar y verificar un contrato</h3>
-<pre><code class="language-cpp">#include &quot;ipc/contract.hpp&quot;
+<pre><code class="lang-cpp">#include &quot;ipc/contract.hpp&quot;
 #include &quot;ipc/security.hpp&quot;
 
 ipc::Contract contract;
@@ -94,7 +115,7 @@ if (!contract.verify()) {
 }</code></pre>
 <p><code>Contract::calculate_hash</code> es BLAKE3-256 sobre el preimagen canónico y produce el mismo valor que Rust. El test de conformidad lo comprueba con un contrato real generado por el core.</p>
 <h3 id="cifrar-un-frame">Cifrar un frame</h3>
-<pre><code class="language-cpp">using namespace ipc::security;
+<pre><code class="lang-cpp">using namespace ipc::security;
 
 KeyDerivation kd(secret32);
 auto session_key = kd.derive_session_key(contract_hash, session_id);
@@ -115,16 +136,16 @@ if (!window.check_and_update(session_id, Direction::Rx, sequence)) {
     throw std::runtime_error(&quot;replay&quot;);
 }</code></pre>
 <p>Compara claves y hashes con <code>constant_time_equals</code>, nunca con <code>==</code> ni <code>memcmp</code>.</p>
-<h3 id="el-transporte-lo-escribes-t">El transporte lo escribes tú</h3>
+<h3 id="el-transporte-lo-escribes-tu">El transporte lo escribes tú</h3>
 <p><code>UnixSocketTransport</code> y <code>TcpTransport</code> existen en la interfaz pero lanzan excepción. Es deliberado: una implementación de socket móvil tiene implicaciones de plataforma que no conviene inventar aquí. En Android necesitarás un socket nativo vía JNI, o un transporte basado en <code>ParcelFileDescriptor</code>.</p>
 <h2 id="kotlin-android">Kotlin / Android</h2>
-<pre><code class="language-kotlin">val kd = KeyDerivation(kdSecret)   // de Android Keystore, idealmente
+<pre><code class="lang-kotlin">val kd = KeyDerivation(kdSecret)   // de Android Keystore, idealmente
 val sessionKey = kd.deriveSessionKey(contract.contractHash, sessionId)
 val encKey = kd.deriveEncryptionKey(sessionKey)
 val nonceKey = kd.deriveNonceKey(contract.contractHash, sessionId)</code></pre>
 <p>Sin dependencias criptográficas externas: Ed25519 viene de <code>SunEC</code> en JDK 15+ (Android 8+), y ChaCha20-Poly1305 y AES-GCM de JCA.</p>
 <h3 id="guardar-el-secreto-en-android">Guardar el secreto en Android</h3>
-<pre><code class="language-kotlin">val ks = KeyStore.getInstance(&quot;AndroidKeyStore&quot;).apply { load(null) }
+<pre><code class="lang-kotlin">val ks = KeyStore.getInstance(&quot;AndroidKeyStore&quot;).apply { load(null) }
 val key = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, &quot;AndroidKeyStore&quot;)
     .apply {
         init(
@@ -140,7 +161,7 @@ val key = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, &quot;Androi
     .generateKey()</code></pre>
 <p>La clave privada Ed25519 para firmar contratos debería vivir en el mismo keystore, no en un archivo.</p>
 <h3 id="verificar-un-contrato">Verificar un contrato</h3>
-<pre><code class="language-kotlin">val contract = Contract.parse(cbcBytes)   // lanza si el header no es canónico
+<pre><code class="lang-kotlin">val contract = Contract.parse(cbcBytes)   // lanza si el header no es canónico
 val hash = contract.calculateContractHash(cbcBytes)
 
 if (!SecurityUtils.constantTimeEquals(contract.contractHash, hash)) {
@@ -151,12 +172,12 @@ if (!SecurityUtils.constantTimeEquals(contract.contractHash, hash)) {
 <p>Si tu sistema tiene componentes en varios lenguajes, el punto de anclaje es <code>tests/vectors/crypto.json</code>. Los tres deben producir los mismos bytes para:</p>
 <ul><li>BLAKE3-256 con clave</li><li>Ed25519 (firma y verificación)</li><li>HKDF-Expand</li><li>derivación de clave de sesión</li><li>nonces</li><li>AEAD</li><li>estado de la ventana anti-replay</li></ul>
 <p>Un fallo de conformidad es un fallo de seguridad: significa que un componente acepta algo que otro rechaza.</p>
-<h2 id="migraci-n-de-v2-0-a-v2-1">Migración de v2.0 a v2.1</h2>
+<h2 id="migracion-de-v20-a-v21">Migración de v2.0 a v2.1</h2>
 <ul><li><code>contract_hash</code> pasa de SHA-256 a <strong>BLAKE3-256</strong>. Los contratos v2.0</li></ul>
-<p>  necesitan recompilarse; no hay migración en caliente porque la identidad   cambia por completo.</p>
+<p>necesitan recompilarse; no hay migración en caliente porque la identidad cambia por completo.</p>
 <ul><li>La firma ahora es Ed25519 real. Las firmas v2.0 (HMAC) no son válidas.</li><li>Se exige <code>HandshakeHello</code> con el <code>contract_hash</code> completo. Un extremo v2.0</li></ul>
-<p>  que sólo envie el prefijo de 12 bytes será rechazado.</p>
+<p>que sólo envie el prefijo de 12 bytes será rechazado.</p>
 <ul><li>Los nonces se derivan de la clave de sesión, no son aleatorios por frame.</li></ul>
-<p>  Los dos extremos deben estar actualizados a la vez.</p>
+<p>Los dos extremos deben estar actualizados a la vez.</p>
 <ul><li>El motor ya no deriva claves de un secreto fijo. Debe pasarse</li></ul>
-<p>  <code>kd_secret</code> explícitamente al construirlo.</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
+<p><code>kd_secret</code> explícitamente al construirlo.</p><footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

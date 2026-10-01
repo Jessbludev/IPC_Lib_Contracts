@@ -1,4 +1,5 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seguridad — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="seguridad-criptogr-fica">Seguridad Criptográfica</h1>
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Seguridad — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html" class="on">Seguridad</a><a href="wiki.html">Wiki</a><a href="get-started.html">Primeros pasos</a><a href="usage.html">Uso</a><a href="implementation.html">Implementación</a><a href="integration.html">Integración</a><a href="roadmap.html">Hoja de ruta</a><a href="security-wiki.html">Seguridad (Wiki)</a></aside><main class="main"><h1 id="seguridad-criptografica">Seguridad Criptográfica</h1>
 <h2 id="principios">Principios</h2>
 <p>El sistema de contratos implementa tres propiedades criptográficas separadas:</p>
 <pre><code>┌─────────────────────────────────────────────────────────────────────┐
@@ -19,9 +20,9 @@
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘</code></pre>
 <h2 id="1-integridad">1. Integridad</h2>
-<h3 id="hash-del-contrato-p0-1">Hash del Contrato (P0.1)</h3>
+<h3 id="hash-del-contrato-p01">Hash del Contrato (P0.1)</h3>
 <p>BLAKE3-256 es el <strong>único</strong> algoritmo con el que un contrato obtiene su identidad. La v2.1 usaba SHA-256 en el binding Kotlin y BLAKE3 en Rust, de modo que el mismo contrato CBC1 producía dos <code>contract_hash</code> distintos y la comparación de identidad del handshake fallaba siempre entre esos dos lenguajes.</p>
-<pre><code class="language-rust">// Preimagen canónico: header de 256 B con contract_hash = 0 y todos los
+<pre><code class="lang-rust">// Preimagen canónico: header de 256 B con contract_hash = 0 y todos los
 // offsets/tamaños de sección a cero, seguido de las secciones. Los offsets no
 // forman parte de la identidad semántica: dependen del empaquetado, no del
 // contenido.
@@ -31,28 +32,28 @@ contract_hash = BLAKE3-256(
     operations_binary ||
     security_policy_binary
 )</code></pre>
-<p>SHA-256 sigue implementado en los tres bindings como digest de compatibilidad, pero <strong>no puede ser <code>contract_hash</code></strong>. Declararlo en la política de seguridad como algoritmo de identidad es un error de configuración.</p>
+<p>SHA-256 sigue implementado en los tres bindings como digest de compatibilidad, pero **no puede ser <code>contract_hash</code>**. Declararlo en la política de seguridad como algoritmo de identidad es un error de configuración.</p>
 <h3 id="checksum-de-paquetes">Checksum de Paquetes</h3>
-<pre><code class="language-rust">// En cada paquete, el payload incluye checksum
+<pre><code class="lang-rust">// En cada paquete, el payload incluye checksum
 payload_with_checksum = payload || BLAKE3(payload)</code></pre>
 <h2 id="2-autenticidad">2. Autenticidad</h2>
 <h3 id="hmac-para-mensajes">HMAC para Mensajes</h3>
-<pre><code class="language-rust">// Cada mensaje incluye HMAC
+<pre><code class="lang-rust">// Cada mensaje incluye HMAC
 mac = HMAC-SHA256(auth_key, frame.header || payload)</code></pre>
-<h3 id="firma-digital-p0-2">Firma Digital (P0.2)</h3>
+<h3 id="firma-digital-p02">Firma Digital (P0.2)</h3>
 <p>La firma se calcula sobre el <strong>mismo preimagen canónico</strong> que alimenta <code>contract_hash</code>, no sobre una serialización auxiliar que pudiera cambiar.</p>
-<pre><code class="language-rust">payload = header_canonical[256] || types || operations || security_policy
+<pre><code class="lang-rust">payload = header_canonical[256] || types || operations || security_policy
 signature = Ed25519::sign(signing_key, payload)</code></pre>
 <p>En v2.1 los bindings Kotlin y C++ no implementaban Ed25519:</p>
-<ul><li>Kotlin: <code>MessageDigest("SHA-256").digest(data + privateKey)</code> — no es una</li></ul>
-<p>  firma, es un hash al que se le concatena la clave privada. Cualquiera que   conociera la clave privada podía "firmar", y la "verificación"   (<code>SHA256(data + publicKey)</code>) no comprueba nada.</p>
+<ul><li>Kotlin: <code>MessageDigest(&quot;SHA-256&quot;).digest(data + privateKey)</code> — no es una</li></ul>
+<p>firma, es un hash al que se le concatena la clave privada. Cualquiera que conociera la clave privada podía &quot;firmar&quot;, y la &quot;verificación&quot; (<code>SHA256(data + publicKey)</code>) no comprueba nada.</p>
 <ul><li>C++: <code>public_key = SHA256(private_key)</code> y firma = <code>HMAC(private_key, data)</code>,</li></ul>
-<p>  que sólo puede verificar quien ya tiene la clave privada.</p>
+<p>que sólo puede verificar quien ya tiene la clave privada.</p>
 <p>Ambos están sustituidos por Ed25519 real: <code>ed25519-dalek</code> en Rust, OpenSSL 3 (<code>EVP_PKEY_ED25519</code>) en C++ y el proveedor JCA <code>SunEC</code> en Kotlin. Los tres verifican los mismos vectores en <code>tests/vectors/crypto.json</code>.</p>
 <p><strong>Política de firma.</strong> <code>SignaturePolicy</code> es <code>NONE</code>, <code>OPTIONAL</code> o <code>REQUIRED</code>, y el valor por defecto es <code>REQUIRED</code>: un contrato sin firma se rechaza al cargarlo. El flag <code>SIGNED</code> del header se activa <strong>antes</strong> de calcular el preimagen; si no, la firma cubriría un header con <code>flags = 0</code> mientras el hash final usaría <code>flags = SIGNED</code>, y la firma no validaría nunca.</p>
 <h2 id="3-confidencialidad">3. Confidencialidad</h2>
 <h3 id="aead-con-chacha20-poly1305">AEAD con ChaCha20-Poly1305</h3>
-<pre><code class="language-rust">use chacha20poly1305::{
+<pre><code class="lang-rust">use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Nonce,
 };
@@ -63,25 +64,22 @@ let nonce = Nonce::from_slice(&amp;frame.nonce);
 let ciphertext = cipher
     .encrypt(nonce, Payload { msg: plaintext, aad })
     .map_err(|_| AeadError::EncryptionFailed)?;</code></pre>
-<h3 id="nonce-p0-4">Nonce (P0.4)</h3>
+<h3 id="nonce-p04">Nonce (P0.4)</h3>
 <p>El nonce <strong>no</strong> es aleatorio. Es una PRF ligada a la clave de sesión:</p>
-<pre><code class="language-rust">nonce = BLAKE3_keyed(
+<pre><code class="lang-rust">nonce = BLAKE3_keyed(
     key  = nonce_key,                 // secreto derivado de la sesión
     data = &quot;ipc-cbc2-nonce-v1&quot; || direction || session_id_le || sequence_le
 )[0..12]</code></pre>
 <p>Esto da dos garantías que la v2.1 no tenía:</p>
-<ol><li><strong>Unicidad estructural</strong>: la tupla <code>(direction, session_id, sequence)</code> es</li></ol>
-<p>   única por construcción, y la máquina de estados anti-replay rechaza    reutilizaciones. No depende de que la CSPRNG no colisione.</p>
-<ol><li><strong>Imposibilidad de adivinanza</strong>: sin <code>nonce_key</code>, un atacante que controle</li></ol>
-<p>   el canal no puede calcular el nonce de un frame que aún no ha observado,    ni elegir una secuencia cuyo nonce le resulte válido.</p>
+<ol><li><strong>Unicidad estructural</strong>: la tupla <code>(direction, session_id, sequence)</code> es única por construcción, y la máquina de estados anti-replay rechaza reutilizaciones. No depende de que la CSPRNG no colisione.</li><li><strong>Imposibilidad de adivinanza</strong>: sin <code>nonce_key</code>, un atacante que controle el canal no puede calcular el nonce de un frame que aún no ha observado, ni elegir una secuencia cuyo nonce le resulte válido.</li></ol>
 <p>La v2.1 derivaba el nonce <strong>sin ningún secreto</strong>:</p>
-<pre><code class="language-text">BLAKE3(&quot;CBC2-NONCE&quot; || session_id || sequence || direction)[0..12]</code></pre>
+<pre><code class="lang-text">BLAKE3(&quot;CBC2-NONCE&quot; || session_id || sequence || direction)[0..12]</code></pre>
 <p>cualquier observador podía recalcularlo. Y los tres bindings usaban además nonces aleatorios distintos (<code>RAND_bytes</code>, <code>SecureRandom</code>), de modo que dos extremos de la misma versión no producían el mismo nonce ni podían compartir vectores de prueba.</p>
 <p>La KDF es propia sobre BLAKE3, <strong>no es HKDF</strong>:</p>
-<pre><code class="language-text">subkey = BLAKE3_keyed(secret, domain || material || session_id_le)</code></pre>
+<pre><code class="lang-text">subkey = BLAKE3_keyed(secret, domain || material || session_id_le)</code></pre>
 <p>con un <code>domain</code> distinto por propósito (<code>ipc-cbc2-session-v1</code>, <code>ipc-cbc2-nonce-key-v1</code>, <code>ipc-cbc2-auth-v1</code>, <code>ipc-cbc2-encrypt-v1</code>). La separación de dominio implica que comprometer una subclave no revela las demás ni reconstruye la clave raíz.</p>
-<h2 id="4-anti-replay-p0-3">4. Anti-Replay (P0.3)</h2>
-<p>La ventana deslizante está indexada por <strong><code>(session_id, direction)</code></strong>, no por el nonce. Los tres bindings implementan exactamente esta máquina de estados:</p>
+<h2 id="4-anti-replay-p03">4. Anti-Replay (P0.3)</h2>
+<p>La ventana deslizante está indexada por **<code>(session_id, direction)</code>**, no por el nonce. Los tres bindings implementan exactamente esta máquina de estados:</p>
 <pre><code>(session_id, direction, sequence)
     │
     ├── sequence &gt; highest  → shift_left(gap), highest = sequence, bit 0 = 1
@@ -89,7 +87,7 @@ let ciphertext = cipher
     │     ├── offset &gt;= window  → RECHAZAR (out_of_window)
     │     └── bit[offset] == 1  → RECHAZAR (replay)
     └── en otro caso, marcar el bit y ACEPTAR</code></pre>
-<pre><code class="language-rust">pub enum AntiReplayError {
+<pre><code class="lang-rust">pub enum AntiReplayError {
     Replay { sequence: u64 },
     SequenceOutOfWindow { sequence: u64, highest: u64, window: usize },
 }
@@ -103,18 +101,13 @@ impl AntiReplay {
     ) -&gt; Result&lt;(), AntiReplayError&gt;
 }</code></pre>
 <p>Tres defectos de la v2.1 que esta versión corrige:</p>
-<ol><li><strong>El bitmap nunca se desplazaba.</strong> <code>shift_and_expand()</code> sólo hacía</li></ol>
-<p>   <code>resize</code>, con lo que los offsets guardados dejaban de corresponder a    secuencias reales y la ventana no olvidaba nada.</p>
-<ol><li><strong>Dos convenciones de índice mezcladas</strong> en la misma función:</li></ol>
-<p>   <code>set_bit(highest - sequence)</code> en una ruta y <code>set_bit(window_size - 1)</code> en    otra.</p>
-<ol><li><strong><code>highest_sequence == 0</code> como centinela de "sin frames"</strong>, lo que</li></ol>
-<p>   confundía la secuencia 0 con el estado vacío. Se sustituye por un flag    <code>initialized</code>.</p>
+<ol><li><strong>El bitmap nunca se desplazaba.</strong> <code>shift_and_expand()</code> sólo hacía <code>resize</code>, con lo que los offsets guardados dejaban de corresponder a secuencias reales y la ventana no olvidaba nada.</li><li><strong>Dos convenciones de índice mezcladas</strong> en la misma función: <code>set_bit(highest - sequence)</code> en una ruta y <code>set_bit(window_size - 1)</code> en otra.</li><li>**<code>highest_sequence == 0</code> como centinela de &quot;sin frames&quot;**, lo que confundía la secuencia 0 con el estado vacío. Se sustituye por un flag <code>initialized</code>.</li></ol>
 <p>En Kotlin y C++ la v2.1 usaba además conjuntos de nonces vistos que crecían sin límite; Kotlin colapsaba el nonce de 96 bits a 64 con <code>ByteBuffer.wrap(nonce).order(BIG_ENDIAN).long</code>, lo que hace trivial una colisión.</p>
-<p><strong><code>Direction</code> aísla TX de RX</strong>: un frame reflejado no puede aceptarse como nuevo en la dirección opuesta.</p>
+<p>**<code>Direction</code> aísla TX de RX**: un frame reflejado no puede aceptarse como nuevo en la dirección opuesta.</p>
 <p>El tamaño de ventana se normaliza al rango <code>[64, 2^20]</code>. Una ventana de 1 elemento no distinguiría un replay inmediato, y una ventana enorme permitiría agotar la memoria desde un contrato malicioso.</p>
-<h2 id="5-derivaci-n-de-claves">5. Derivación de Claves</h2>
-<p>KDF propia sobre BLAKE3 con separación de dominio. <strong>No es HKDF</strong> y no se documenta como tal: la v2.1 lo llamaba "HKDF-like derivation" sin que lo fuera.</p>
-<pre><code class="language-rust">pub struct KeyDerivation {
+<h2 id="5-derivacion-de-claves">5. Derivación de Claves</h2>
+<p>KDF propia sobre BLAKE3 con separación de dominio. <strong>No es HKDF</strong> y no se documenta como tal: la v2.1 lo llamaba &quot;HKDF-like derivation&quot; sin que lo fuera.</p>
+<pre><code class="lang-rust">pub struct KeyDerivation {
     secret: [u8; 32],          // secreto raíz, nunca un &quot;salt&quot; público
 }
 
@@ -146,73 +139,200 @@ impl KeyDerivation {
     }
 }</code></pre>
 <p>La v2.1 usaba <code>salt = [0u8; 32]</code> en el motor de runtime, con lo que todas las claves de todas las sesiones e instancias se derivaban de un secreto público y conocido. El secreto raíz sale ahora de la CSPRNG del sistema.</p>
-<p>Las subclaves se envuelven en <code>SessionKey</code>, que sobrescribe el material al soltar (<code>write_volatile</code> + fence) y <strong>no implementa <code>Debug</code> en claro</strong>: un <code>{:?}</code> no puede volcar una clave a un log.</p>
+<p>Las subclaves se envuelven en <code>SessionKey</code>, que sobrescribe el material al soltar (<code>write_volatile</code> + fence) y **no implementa <code>Debug</code> en claro**: un <code>{:?}</code> no puede volcar una clave a un log.</p>
 <h2 id="niveles-de-seguridad">Niveles de Seguridad</h2>
 <h3 id="level-1-integridad-only">Level 1: Integridad Only</h3>
-<pre><code class="language-yaml">security:
+<pre><code class="lang-yaml">security:
   authentication_required: false
   confidentiality_required: false
   anti_replay: false</code></pre>
 <p>Solo checksum, sin cifrado. Para debugging o redes seguras.</p>
 <h3 id="level-2-autenticado">Level 2: Autenticado</h3>
-<pre><code class="language-yaml">security:
+<pre><code class="lang-yaml">security:
   authentication_required: true
   confidentiality_required: false
   anti_replay: true</code></pre>
 <p>MAC en cada mensaje. Para entornos donde el contenido no es sensible.</p>
-<h3 id="level-3-encriptado-producci-n">Level 3: Encriptado (Producción)</h3>
-<pre><code class="language-yaml">security:
+<h3 id="level-3-encriptado-produccion">Level 3: Encriptado (Producción)</h3>
+<pre><code class="lang-yaml">security:
   authentication_required: true
   confidentiality_required: true
   anti_replay: true</code></pre>
 <p>AEAD completo con ChaCha20-Poly1305. <strong>Recomendado para producción.</strong></p>
-<h2 id="comparaci-n-algoritmos">Comparación Algoritmos</h2>
-<div class="table-wrap"><table><thead><tr><th>Algoritmo</th><th>Velocidad</th><th>Seguridad</th><th>Notes</th></tr></thead><tbody><tr><td>ChaCha20-Poly1305</td><td>Rápido</td><td>★★★★★</td><td>Recomendado</td></tr><tr><td>AES-256-GCM</td><td>Rápido</td><td>★★★★★</td><td>Requiere AES-NI</td></tr><tr><td>AES-128-GCM</td><td>Rápido</td><td>★★★★☆</td><td>Aceptable</td></tr><tr><td>XOR</td><td>-</td><td>★☆☆☆☆</td><td>NO USAR</td></tr><tr><td>RC4</td><td>-</td><td>☆☆☆☆☆</td><td>Inseguro</td></tr></tbody></table></div>
+<h2 id="comparacion-algoritmos">Comparación Algoritmos</h2>
+<table><thead><tr>
+<th>Algoritmo</th>
+<th>Velocidad</th>
+<th>Seguridad</th>
+<th>Notes</th>
+</tr></thead><tbody>
+<tr>
+<td>ChaCha20-Poly1305</td>
+<td>Rápido</td>
+<td>★★★★★</td>
+<td>Recomendado</td>
+</tr>
+<tr>
+<td>AES-256-GCM</td>
+<td>Rápido</td>
+<td>★★★★★</td>
+<td>Requiere AES-NI</td>
+</tr>
+<tr>
+<td>AES-128-GCM</td>
+<td>Rápido</td>
+<td>★★★★☆</td>
+<td>Aceptable</td>
+</tr>
+<tr>
+<td>XOR</td>
+<td>-</td>
+<td>★☆☆☆☆</td>
+<td>NO USAR</td>
+</tr>
+<tr>
+<td>RC4</td>
+<td>-</td>
+<td>☆☆☆☆☆</td>
+<td>Inseguro</td>
+</tr>
+</tbody></table>
 <h2 id="recomendaciones">Recomendaciones</h2>
 <ol><li><strong>Siempre usar AEAD</strong> en producción</li><li><strong>Nunca hardcodear claves</strong> - usar KeyDerivation</li><li><strong>Regenerar nonces</strong> para cada paquete</li><li><strong>Validar tamaño de nonce</strong> - debe ser exactamente 12 bytes</li><li><strong>Mantener salts únicos</strong> por aplicación</li></ol>
-<h2 id="6-pol-ticas-aplicadas-zero-trust-zero-knowledge-zero-log">6. Políticas aplicadas: zero-trust, zero-knowledge, zero-log</h2>
+<h2 id="6-politicas-aplicadas-zero-trust-zero-knowledge-zero-log">6. Políticas aplicadas: zero-trust, zero-knowledge, zero-log</h2>
 <p>Estas políticas no son recomendaciones: están codificadas y verificadas.</p>
 <h3 id="zero-trust">Zero trust</h3>
 <p>Nada se acepta por suposición. Todo lo que llega de un peer remoto pasa por una comprobación explícita antes de usarse:</p>
-<div class="table-wrap"><table><thead><tr><th>Comprobación</th><th>Dónde</th><th>Comportamiento ante fallo</th></tr></thead><tbody><tr><td>Bounds de sección y solapamientos</td><td><code>ContractHeader::validate_sections</code></td><td><code>Err</code>, nunca panic</td></tr><tr><td>Bytes reservados ≠ 0</td><td><code>Frame::from_bytes</code></td><td><code>Err(NonZeroReserved)</code></td></tr><tr><td>Bits de flag desconocidos</td><td><code>Frame::from_bytes</code>, <code>ContractHeader::from_bytes</code></td><td><code>Err(UnknownFlags)</code> (fail-closed)</td></tr><tr><td>Bytes UTF-8 inválidos</td><td>header, operaciones</td><td><code>Err</code></td></tr><tr><td>Valores de enum desconocidos (política, rol, packet type)</td><td>decodificadores</td><td><code>Err</code>, nunca degradar a un valor por defecto</td></tr><tr><td>Longitudes declaradas &gt; bytes disponibles</td><td>todos los parsers</td><td><code>Err</code> antes de reservar memoria</td></tr><tr><td>Tamaño de payload &gt; máximo</td><td><code>Frame::from_bytes</code></td><td><code>Err(PayloadTooLarge)</code></td></tr><tr><td><code>contract_hash</code> recalculado</td><td><code>ContractReader::from_bytes</code></td><td><code>Err(HashMismatch)</code></td></tr><tr><td>Firma obligatoria ausente</td><td><code>ContractReader::from_bytes</code></td><td><code>Err(AuthenticationRequired)</code></td></tr><tr><td>Versión de protocolo</td><td>frame y HELLO</td><td><code>Err(IncompatibleVersion)</code></td></tr></tbody></table></div>
-<p><strong>Regla estructural</strong>: <em>bytes remotos → parser fallible → <code>Result&lt;T, Error&gt;</code></em>. Nunca <code>unwrap()</code>, nunca <code>panic!</code>, nunca una excepción no capturada. Hay tests con <code>catch_unwind</code> que recorren todos los prefijos posibles de un header válido y comprueban que ninguno entra en panic.</p>
+<table><thead><tr>
+<th>Comprobación</th>
+<th>Dónde</th>
+<th>Comportamiento ante fallo</th>
+</tr></thead><tbody>
+<tr>
+<td>Bounds de sección y solapamientos</td>
+<td><code>ContractHeader::validate_sections</code></td>
+<td><code>Err</code>, nunca panic</td>
+</tr>
+<tr>
+<td>Bytes reservados ≠ 0</td>
+<td><code>Frame::from_bytes</code></td>
+<td><code>Err(NonZeroReserved)</code></td>
+</tr>
+<tr>
+<td>Bits de flag desconocidos</td>
+<td><code>Frame::from_bytes</code>, <code>ContractHeader::from_bytes</code></td>
+<td><code>Err(UnknownFlags)</code> (fail-closed)</td>
+</tr>
+<tr>
+<td>Bytes UTF-8 inválidos</td>
+<td>header, operaciones</td>
+<td><code>Err</code></td>
+</tr>
+<tr>
+<td>Valores de enum desconocidos (política, rol, packet type)</td>
+<td>decodificadores</td>
+<td><code>Err</code>, nunca degradar a un valor por defecto</td>
+</tr>
+<tr>
+<td>Longitudes declaradas &gt; bytes disponibles</td>
+<td>todos los parsers</td>
+<td><code>Err</code> antes de reservar memoria</td>
+</tr>
+<tr>
+<td>Tamaño de payload &gt; máximo</td>
+<td><code>Frame::from_bytes</code></td>
+<td><code>Err(PayloadTooLarge)</code></td>
+</tr>
+<tr>
+<td><code>contract_hash</code> recalculado</td>
+<td><code>ContractReader::from_bytes</code></td>
+<td><code>Err(HashMismatch)</code></td>
+</tr>
+<tr>
+<td>Firma obligatoria ausente</td>
+<td><code>ContractReader::from_bytes</code></td>
+<td><code>Err(AuthenticationRequired)</code></td>
+</tr>
+<tr>
+<td>Versión de protocolo</td>
+<td>frame y HELLO</td>
+<td><code>Err(IncompatibleVersion)</code></td>
+</tr>
+</tbody></table>
+<p><strong>Regla estructural</strong>: *bytes remotos → parser fallible → <code>Result&lt;T, Error&gt;</code>*. Nunca <code>unwrap()</code>, nunca <code>panic!</code>, nunca una excepción no capturada. Hay tests con <code>catch_unwind</code> que recorren todos los prefijos posibles de un header válido y comprueban que ninguno entra en panic.</p>
 <p>El orden de verificación en recepción también es parte de la política:</p>
-<pre><code class="language-text">1. validar el frame estructuralmente
+<pre><code class="lang-text">1. validar el frame estructuralmente
 2. comprobar el prefijo de contract_hash   (discriptor rápido, barato)
 3. verificar AEAD sobre el AAD del header  (autenticidad)
 4. sólo entonces registrar la secuencia en la ventana anti-replay</code></pre>
 <p>El paso 4 va después del 3 a propósito: si un atacante sin la clave pudiera avanzar la ventana de un emisor legítimo, podría bloquear tráfico válido.</p>
 <h3 id="zero-knowledge">Zero knowledge</h3>
 <ul><li>El payload se cifra con AEAD antes de salir. El frame nunca transporta el</li></ul>
-<p>  texto plano cuando la política exige confidencialidad.</p>
+<p>texto plano cuando la política exige confidencialidad.</p>
 <ul><li>El canal no expone metadatos de la operación más allá de lo necesario:</li></ul>
-<p>  <code>operation_id</code> y <code>schema_id</code> son identificadores numéricos, no nombres.</p>
+<p><code>operation_id</code> y <code>schema_id</code> son identificadores numéricos, no nombres.</p>
 <ul><li>Recepción sin cifrar sólo se acepta si la política lo permite</li></ul>
-<p>  explícitamente; con <code>authentication_required</code> o <code>confidentiality_required</code>   se rechaza el frame.</p>
+<p>explícitamente; con <code>authentication_required</code> o <code>confidentiality_required</code> se rechaza el frame.</p>
 <h3 id="zero-log">Zero log</h3>
 <ul><li>El motor de runtime <strong>no</strong> inicializa <code>tracing_subscriber</code>. Qué se registra y</li></ul>
-<p>  con qué granularidad es una decisión del proceso anfitrión; los sinks por   defecto escriben en <code>stdout</code>/<code>stderr</code>, que en un runtime móvil acaba en   <code>logcat</code> y es legible por otras aplicaciones con el permiso correspondiente.</p>
+<p>con qué granularidad es una decisión del proceso anfitrión; los sinks por defecto escriben en <code>stdout</code>/<code>stderr</code>, que en un runtime móvil acaba en <code>logcat</code> y es legible por otras aplicaciones con el permiso correspondiente.</p>
 <ul><li><code>SessionKey</code> no implementa <code>Debug</code> en claro: no se puede volcar material de</li></ul>
-<p>  clave a un log por accidente.</p>
+<p>clave a un log por accidente.</p>
 <ul><li>Las claves se sobrescriben al soltar la sesión (<code>write_volatile</code> + fence de</li></ul>
-<p>  compilación) para reducir la ventana de exposición en memoria.</p>
+<p>compilación) para reducir la ventana de exposición en memoria.</p>
 <ul><li>Los mensajes de error son genéricos en la frontera criptográfica: un fallo</li></ul>
-<p>  de autenticación AEAD produce la misma excepción que cualquier otro, sin   revelar si el tag, el nonce o la clave fueron el problema.</p>
+<p>de autenticación AEAD produce la misma excepción que cualquier otro, sin revelar si el tag, el nonce o la clave fueron el problema.</p>
 <ul><li><code>contractc</code> sí escribe en stdout: es una herramienta de línea de comandos</li></ul>
-<p>  cuyo resultado <em>es</em> su salida, y no contiene material de clave.</p>
-<h2 id="7-verificaci-n">7. Verificación</h2>
-<pre><code class="language-bash">./run_all_tests.sh</code></pre>
+<p>cuyo resultado <em>es</em> su salida, y no contiene material de clave.</p>
+<h2 id="7-verificacion">7. Verificación</h2>
+<pre><code class="lang-bash">./run_all_tests.sh</code></pre>
 <p>Ejecuta el gate completo en los tres lenguajes:</p>
-<div class="table-wrap"><table><thead><tr><th>Gate</th><th>Qué demuestra</th></tr></thead><tbody><tr><td><code>cargo check --all-targets --all-features</code></td><td>El crate compila, incluidos los binarios y los tests</td></tr><tr><td><code>cargo test --all-features</code></td><td>53 tests: unitarios, conformidad y fuzzing</td></tr><tr><td><code>g++ -Wall</code> sobre los 4 TUs</td><td>Los bindings C++ compilan sin warnings</td></tr><tr><td>Vectores BLAKE3 en C++</td><td>BLAKE3 propio coincide con la referencia</td></tr><tr><td><code>conformance_test</code> (C++)</td><td>17 comprobaciones contra los vectores dorados</td></tr><tr><td>CMake + <code>ctest</code></td><td>El mismo build que consume el producto</td></tr><tr><td><code>kotlinc</code></td><td>Los bindings Kotlin compilan</td></tr><tr><td><code>KotlinConformanceTest</code></td><td>39 comprobaciones contra los vectores dorados</td></tr></tbody></table></div>
+<table><thead><tr>
+<th>Gate</th>
+<th>Qué demuestra</th>
+</tr></thead><tbody>
+<tr>
+<td><code>cargo check --all-targets --all-features</code></td>
+<td>El crate compila, incluidos los binarios y los tests</td>
+</tr>
+<tr>
+<td><code>cargo test --all-features</code></td>
+<td>53 tests: unitarios, conformidad y fuzzing</td>
+</tr>
+<tr>
+<td><code>g++ -Wall</code> sobre los 4 TUs</td>
+<td>Los bindings C++ compilan sin warnings</td>
+</tr>
+<tr>
+<td>Vectores BLAKE3 en C++</td>
+<td>BLAKE3 propio coincide con la referencia</td>
+</tr>
+<tr>
+<td><code>conformance_test</code> (C++)</td>
+<td>17 comprobaciones contra los vectores dorados</td>
+</tr>
+<tr>
+<td>CMake + <code>ctest</code></td>
+<td>El mismo build que consume el producto</td>
+</tr>
+<tr>
+<td><code>kotlinc</code></td>
+<td>Los bindings Kotlin compilan</td>
+</tr>
+<tr>
+<td><code>KotlinConformanceTest</code></td>
+<td>39 comprobaciones contra los vectores dorados</td>
+</tr>
+</tbody></table>
 <h3 id="fuzzing-de-los-parsers">Fuzzing de los parsers</h3>
 <p><code>tests/fuzz_parsers.rs</code> ejecuta generación aleatoria sobre los parsers de datos externos. Reglas que verifica:</p>
 <ul><li>Ningún blob arbitrario provoca un panic en <code>Frame::from_bytes</code>,</li></ul>
-<p>  <code>ContractHeader::from_bytes</code> ni <code>ContractReader::from_bytes</code>.</p>
+<p><code>ContractHeader::from_bytes</code> ni <code>ContractReader::from_bytes</code>.</p>
 <ul><li>Truncamientos en cualquier punto dan <code>Err</code>, nunca panic.</li><li><code>payload_length</code> absurdo se rechaza antes de reservar memoria.</li><li>Bytes de relleno del header y <code>schema_offset</code> alterados invalidan el</li></ul>
-<p>  contrato.</p>
+<p>contrato.</p>
 <ul><li>El round-trip de un contrato firmado es estable.</li><li><strong>Ningún byte del archivo escapa a la comprobación de integridad</strong>: el test</li></ul>
-<p>  <code>test_no_byte_of_the_file_escapes_integrity</code> recorre todas las posiciones de   un contrato firmado y exige que modificar cualquiera de ellas haga fallar el   lector o la firma.</p>
+<p><code>test_no_byte_of_the_file_escapes_integrity</code> recorre todas las posiciones de un contrato firmado y exige que modificar cualquiera de ellas haga fallar el lector o la firma.</p>
 <p>Ese último test existe porque el fuzzer encontró un fallo real: el relleno posterior al NUL del campo <code>name</code> y el <code>schema_offset</code> no formaban parte del preimagen del hash (que se reconstruye desde la struct parseada), de modo que podían alterarse sin romper la integridad. Hoy el header se exige canónico y la sección <code>schema</code> se rechaza si no está vacía.</p>
 <p>Los vectores viven en <code>tests/vectors/crypto.json</code> y se regeneran con:</p>
-<pre><code class="language-bash">cargo run --example conformance_vectors &gt; tests/vectors/crypto.json</code></pre>
-<p>Si un binding diverge en un solo byte, los tests de conformidad del binding afectado fallan. Ése es el criterio de madurez del sistema: no que cada implementación funcione por separado, sino que el mismo contrato, hash, firma, nonce, frame y estado anti-replay sean <strong>idénticos</strong> en los tres lenguajes.</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
+<pre><code class="lang-bash">cargo run --example conformance_vectors &gt; tests/vectors/crypto.json</code></pre>
+<p>Si un binding diverge en un solo byte, los tests de conformidad del binding afectado fallan. Ése es el criterio de madurez del sistema: no que cada implementación funcione por separado, sino que el mismo contrato, hash, firma, nonce, frame y estado anti-replay sean <strong>idénticos</strong> en los tres lenguajes.</p><footer>IPC Lib Contracts · 2.1.1 pre-release · generado por tools/render_docs.py</footer></main></div></body></html>

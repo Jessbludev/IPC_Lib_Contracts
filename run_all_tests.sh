@@ -29,6 +29,28 @@ step() { printf '\n%s=== %s ===%s\n' "$YELLOW" "$1" "$RESET"; }
 ok()   { printf '%s ok   %s%s\n' "$GREEN" "$1" "$RESET"; }
 fail() { printf '%s FAIL %s%s\n' "$RED" "$1" "$RESET"; FAILURES=$((FAILURES + 1)); }
 
+# Un gate que no se puede ejecutar NO es un gate que pasa.
+#
+# La v2.1.1 omitía en silencio cualquier herramienta ausente y aun así
+# imprimía "Todos los gates pasaron", lo que es exactamente la degradación
+# silenciosa que la política zero-trust prohíbe: un runner que reporta verde
+# sin haber comprobado nada es peor que no tener runner.
+#
+# `SKIP_MISSING=1` mantiene el comportamiento histórico para quien quiera
+# verificar sólo un binding, pero el resultado se marca como INCOMPLETO.
+SKIPPED=""
+SKIP_MISSING="${SKIP_MISSING:-0}"
+skip() {
+    SKIPPED="${SKIPPED}${SKIPPED:+, }$1"
+    if [ "$SKIP_MISSING" = "1" ]; then
+        printf '%s SKIP %s (herramienta ausente; resultado INCOMPLETO)%s\n' \
+               "$YELLOW" "$1" "$RESET"
+    else
+        printf '%s FAIL %s (herramienta ausente)%s\n' "$RED" "$1" "$RESET"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
 # ---------------------------------------------------------------------------
 step "Rust: cargo check --all-targets --all-features"
 # El gate que la revisión P0 identificó como no ejecutado.
@@ -52,6 +74,7 @@ fi
 step "C++: compilación de la librería"
 CPP_FLAGS=(-std=c++20 -O2 -Wall -DUSE_OPENSSL -Icpp_bindings/include)
 CXX_OK=1
+command -v g++ >/dev/null 2>&1 || skip "g++ (bindings C++)"
 for f in contract crypto blake3 client; do
     if ! g++ "${CPP_FLAGS[@]}" -c "cpp_bindings/src/$f.cpp" -o "$BUILD_DIR/$f.o" 2>"$BUILD_DIR/$f.log"; then
         fail "g++ $f.cpp"
@@ -100,10 +123,17 @@ if command -v cmake >/dev/null 2>&1; then
     if cmake -S cpp_bindings -B "$BUILD_DIR/cm" -DCMAKE_BUILD_TYPE=Release \
              -DIPC_BUILD_TESTS=ON > "$BUILD_DIR/cmake.log" 2>&1 &&
        cmake --build "$BUILD_DIR/cm" -j2 >> "$BUILD_DIR/cmake.log" 2>&1; then
+        # -DIPC_BUILD_TESTS=ON es obligatorio: con el default (OFF) ctest
+        # encuentra cero tests y devuelve éxito, de modo que el gate pasaba
+        # sin haber ejecutado nada.
         if (cd "$BUILD_DIR/cm" && ctest --output-on-failure) > "$BUILD_DIR/ctest.log" 2>&1; then
-            N=$(grep -oE '^Total Test time.*' "$BUILD_DIR/ctest.log" >/dev/null 2>&1 && \
-                grep -oE '[0-9]+ tests' "$BUILD_DIR/ctest.log" | head -1)
-            ok "CMake build + ctest (${N:-ok})"
+            N=$(grep -oE '[0-9]+% tests passed' "$BUILD_DIR/ctest.log" | head -1)
+            if [ -z "$N" ] || grep -q 'No tests were found' "$BUILD_DIR/ctest.log"; then
+                fail "ctest no encontró tests (¿falta -DIPC_BUILD_TESTS=ON?)"
+                tail -5 "$BUILD_DIR/ctest.log"
+            else
+                ok "CMake build + ctest ($N)"
+            fi
         else
             fail "ctest"
             tail -20 "$BUILD_DIR/ctest.log"
@@ -113,17 +143,17 @@ if command -v cmake >/dev/null 2>&1; then
         tail -20 "$BUILD_DIR/cmake.log"
     fi
 else
-    printf '%sCMake no disponible: se omite el build por CMake%s\n' "$YELLOW" "$RESET"
+    skip "cmake build + ctest"
 fi
 
 # ---------------------------------------------------------------------------
 step "Kotlin: compilación de los bindings"
-command -v "$KOTLINC" >/dev/null 2>&1 || {
-    printf '%sKotlin no disponible: se omite la verificación de Kotlin%s\n' "$YELLOW" "$RESET"
-    KT_OK=0
-}
-
 KT_OK=1
+if ! command -v "$KOTLINC" >/dev/null 2>&1; then
+    skip "kotlinc bindings"
+    skip "kotlin conformance"
+    KT_OK=0
+fi
 if [ "${KT_OK:-1}" = 1 ]; then
     CP=""
     [ -n "$COROUTINES_JAR" ] && [ -f "$COROUTINES_JAR" ] && CP="$COROUTINES_JAR"
