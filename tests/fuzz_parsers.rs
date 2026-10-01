@@ -139,7 +139,8 @@ proptest! {
         ContractSigner::sign(&mut c, &sk).unwrap();
 
         let binary = c.to_binary().unwrap();
-        let parsed = ContractReader::from_bytes(&binary).unwrap();
+        let unverified = ContractReader::from_bytes(&binary).unwrap();
+        let parsed = unverified.inspect();
 
         prop_assert_eq!(&parsed.header.name, &c.header.name);
         prop_assert_eq!(parsed.header.contract_hash, c.header.contract_hash);
@@ -166,7 +167,7 @@ proptest! {
         if let Ok(parsed) = ContractReader::from_bytes(&binary) {
             let vk = sk.verifying_key();
             prop_assert!(
-                ContractSigner::verify(&parsed, &vk).is_err(),
+                parsed.verify(&vk).is_err(),
                 "un contrato alterado no debe pasar la verificacion de firma"
             );
         }

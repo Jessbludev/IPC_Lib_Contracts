@@ -702,6 +702,217 @@ contractc generate contract.cbc --target cpp
 | 011 | Bug Buffer Overflow | Corregido |
 | 012 | v2.1 Security/Protocol Correctness | Aceptado |
 | 013 | Herramientas CLI de Verificación | Aceptado |
+| 0006 | Verificación de firma en el tipo | Aceptado |
+| 0007 | BLAKE3 con árbol de sub-chunks completo | Aceptado |
+
+## ADR-0006: Verificacion de firma en el tipo
+
+**Estado**: Aceptado (2.1.2)
+**Fecha**: 2026-09-30
+
+### Contexto
+
+`ContractReader::from_bytes` comprobaba la integridad del contrato (el
+`contract_hash` recalculado coincidía) y comprobaba que la firma **estuviera
+presente** cuando la política la exigía. No la verificaba
+criptográficamente, porque no recibía una clave pública.
+
+La causa era correcta: el lector no tiene un ancla de confianza. Una clave
+pública incluida dentro del propio contrato no sirve como ancla, porque un
+atacante puede sustituir contrato y clave simultáneamente, y ambos pasarían la
+comprobación.
+
+El problema era la **superficie de la API**. Devolver un `Contract` normal
+desde `from_bytes` permite que un integrador lo trate como verificado:
+
+```rust
+// Antes: compila, y parece que el contrato está verificado.
+let contract = ContractReader::from_bytes(&bytes)?;
+start_session(contract);
+```
+
+La separación real estaba en otra función, `ContractSigner::verify`, que sí
+recibe la clave. Nada en el sistema de tipos impedía saltarse el paso, y el
+nombre `from_bytes` no sugiere que falte verificación.
+
+### Alternativas consideradas
+
+1. **Documentarlo y confiar en el integrador.** Es lo que había. Un error de
+   uso pasa inadvertido y no lo detecta ni el compilador ni los tests.
+
+2. **Añadir un parámetro `Option<VerifyingKey>` a `from_bytes`.** Mismo
+   problema: `None` es indistinguible de un contrato verificado.
+
+3. **Tipos separados.** `from_bytes` devuelve `UnverifiedContract`, que no
+   expone los datos del contrato más que para inspección, y sólo
+   `verify` con una clave externa produce un `VerifiedContract`.
+
+### Decisión
+
+Separar los dos estados en el sistema de tipos.
+
+```rust
+let candidate = ContractReader::parse(&bytes)?;      // UnverifiedContract
+let verified  = candidate.verify(&trusted_key)?;      // VerifiedContract
+```
+
+Atajo equivalente:
+
+```rust
+let verified = ContractReader::from_bytes_verified(&bytes, &trusted_key)?;
+```
+
+`UnverifiedContract` no implementa `Deref<Target = Contract>` a propósito: sin
+eso, `&*unverified` daría acceso directo a los campos. El contrato sólo es
+accesible vía `inspect()`, que documenta en el punto de llamada que se está
+mirando algo sin verificar.
+
+### Ancla de confianza
+
+La clave pública debe venir del anfitrión, nunca del contrato:
+
+- fijada en configuración;
+- almacén local de claves autorizadas;
+- rotación identificada por `key_id`;
+- PKI externa, si el despliegue lo requiere.
+
+Se añade `key_id` al header CBC1, en el offset 224, que hasta ahora era zona
+reservada. No cambia el tamaño del header ni desplaza ningún offset. Al estar
+dentro del header canónico, queda cubierto por `contract_hash` y por la firma,
+de modo que alterarlo invalida ambas cosas.
+
+`key_id` **no** es un ancla de confianza por sí mismo: sólo sirve para elegir
+qué clave de un almacén externo usar.
+
+La firma cubre el preimagen canónico completo: header con el hash a cero,
+tipos, operaciones y política de seguridad. `ContractSigner::signing_payload`
+ya hacía esa normalización.
+
+### Consecuencias
+
+- `from_bytes` pasa a devolver `UnverifiedContract`. Es un cambio de API
+  incompatible, y deliberado: la v2.1.1 exponía un uso que parecía seguro.
+- Los comandos de inspección de `contractc` usan `inspect()` explícitamente.
+- `contractc verify --check-signature` sin `--verify-key` ya no imprime
+  `Ed25519 / VALID`: dice que la firma no se ha verificado. Antes, sin clave y
+  sin el flag `SIGNED`, imprimía `VALID` sin haber validado nada.
+- El espacio reservado 228..255 pasa a exigirse cero, por el mismo motivo que
+  el relleno de los campos de texto.
+
+### Bug encontrado al escribir los tests
+
+El test que recorre todas las posiciones del archivo y altera un byte en cada
+una destapó una ambigüedad de representación: con `schema_size == 0`, tanto
+`schema_offset == 0` como `schema_offset == 256` describen el mismo contrato.
+Como el preimagen pone los offsets a cero, alternar entre ambos no cambiaba ni
+el hash ni la firma: el mismo contrato tenía dos formas byte-distintas.
+
+`finalize()` ahora escribe `schema_offset = 0` y el lector exige ese valor.
+Un contrato no puede representarse de dos maneras.
+
+Este caso no estaba en la especificación de PR1. Lo encontró el criterio de
+aceptación, que pedía exactamente "byte modificado en cualquier sección:
+rechazo".
+
+## ADR-0007: BLAKE3 con arbol de sub-chunks completo
+
+**Estado**: Aceptado (2.1.2)
+**Fecha**: 2026-09-30
+
+### Contexto
+
+Las implementaciones de BLAKE3 en C++ y Kotlin soportaban **un solo chunk**
+(1024 bytes) y lanzaban excepción más allá. El motivo era preferible a lo
+contrario —devolver un digest incorrecto en silencio habría sido peor— pero
+dejaba el sistema incompleto: un contrato CBC con header, tipos, operaciones
+y política **supera 1024 bytes con facilidad**, y ningún test lo detectaba
+porque todos los vectores eran pequeños.
+
+Eliminar la excepción sin implementar el árbol habría producido hashes
+incorrectos.
+
+### Decisión
+
+Implementar el árbol de sub-chunks completo según la especificación oficial de
+BLAKE3, más una API incremental.
+
+```
+Blake3Hasher h;
+h.update(a);
+h.update(b);
+auto digest = h.finalize();
+```
+
+El resultado no depende de la partición, que es la propiedad que comprueban los
+tests: `update(a); update(b)` debe coincidir con `hash(a ++ b)`.
+
+### Estructura
+
+Se sigue a la implementación de referencia:
+
+- `ChunkState` mantiene el chaining value, el contador y el bloque en curso.
+- Al llenarse un chunk (1024 bytes), su chaining value se apila y se empieza
+  otro con el contador siguiente.
+- La pila mantiene sub-chunks cuyo número de chunks completados es
+  **estrictamente decreciente de abajo hacia arriba**. Ese invariante es lo que
+  garantiza que la forma final sea el árbol canónico.
+- Al añadir un chunk se colapsa la pila de izquierda a derecha mientras el
+  número total de chunks sea par.
+- Al finalizar, los sub-chunks pendientes se combinan de derecha a izquierda
+  con el chunk en curso, y el nodo resultante se comprime con el flag `ROOT`.
+
+El digest es el resultado de esa compresión raíz. El *chaining value* de un
+nodo intermedio es una operación distinta: se usa para encadenar, no como
+salida.
+
+### Modo keyed
+
+El flag `KEYED_HASH` se propaga a **todas** las compresiones, incluidas las de
+los nodos padre del árbol. Es el mismo requisito que ya exigía el modo de un
+solo chunk.
+
+### Límite eliminado
+
+No se fija un nuevo límite. El criterio de aceptación es que `contract_hash`
+pueda calcularse para cualquier contrato dentro del límite global razonable
+del protocolo, sin que 1024 bytes sea un límite artificial de los bindings.
+Subir el límite a 16 MiB sin implementar el árbol sólo habría desplazado el
+fallo.
+
+### Vectores
+
+Regenerables con:
+
+```bash
+cargo run --example blake3_multichunk_vectors
+```
+
+Cubren longitudes 0, 1, 63, 64, 65, 127, 128, 129, 1023, 1024, 1025, 2047,
+2048, 2049, 3072, 4096, 4097, 8192 y 1 MiB, con datos a cero y pseudoaleatorios
+deterministas, en modo normal y keyed.
+
+Se incluyen casos que no son potencia de dos a propósito: son los que
+descubren errores en el colapso de la pila.
+
+Los vectores existentes de hasta 1024 bytes **no cambian**: añadir soporte
+multi-chunk no altera los hashes previos.
+
+### Dos errores que costaron tiempo
+
+1. **Plegar el estado dentro de la primitiva.** Al reescribir `compress` para
+   soportar el árbol, se hizo que devolviera el chaining value
+   (`s[i] xor s[i+8]`) en lugar del estado completo de 16 palabras. El
+   resultado era un hash incorrecto pero plausible que sólo aparecía al
+   comparar con la referencia, y afectaba incluso a la entrada vacía.
+
+2. **XOR en lugar de asignación.** Las cuatro últimas palabras del estado
+   inicial (contador, longitud, flags) se inicializan **asignando**, no
+   XOREando con el IV. Con `^=` el estado arranca en `IV[4..8]` y el hash
+   cambia de forma igualmente silenciosa.
+
+En los dos casos el código compilaba, los tests de conformidad fallaban, y el
+detalle aparecía comparando palabra a palabra con la implementación de
+referencia. Es exactamente el motivo por el que ningún binding delega en otro.
 
 ---
 

@@ -1,6 +1,6 @@
 [package]
 name = "ipc-contract-system"
-version = "2.1.1"
+version = "2.1.2"
 edition = "2021"
 authors = ["IPC Contract System Team"]
 description = "High-security IPC with Canonical Binary Contracts v2.1 - Security/Protocol Correctness"

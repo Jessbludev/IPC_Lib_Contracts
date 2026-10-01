@@ -1,4 +1,4 @@
-# IPC Contract System v2.1.1
+# IPC Contract System v2.1.2
 
 **Sistema de contratos binarios canónicos con seguridad criptográfica real para comunicación inter-procesos.**
 
@@ -308,9 +308,6 @@ let result = session.call("resize", payload)?;
 
 ## Documentación
 
-- [Sitio documental publicado](https://ipc-lib-contracts-docs.netlify.app) — HTML estático desplegado independientemente en Netlify
-- Para regenerar localmente: `python3 tools/render_docs.py`
-
 - [DSL.md](DSL.md) - Gramática y ejemplos del DSL
 - [docs/CONTRACTS.md](docs/CONTRACTS.md) - Sistema de contratos binarios
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) - Protocolo wire v2
@@ -320,3 +317,7 @@ let result = session.call("resize", payload)?;
 ## License
 
 MIT OR Apache-2.0
+
+## Documentación publicada
+
+La documentación HTML se genera con `python3 tools/render_docs.py` y se despliega de forma independiente en [Netlify](https://ipc-lib-contracts-docs.netlify.app). Los HTML generados no se versionan en este repositorio.

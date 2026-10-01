@@ -128,13 +128,20 @@ firma, se rechaza.
 
 ### Confianza de la clave
 
-`ContractReader::from_bytes` comprueba presencia de firma y `contract_hash`,
-pero **no verifica la firma criptográficamente** porque no recibe una clave
-pública confiable — no debería recibirla: eso sería Trusted Third Party.
+`ContractReader::from_bytes` devuelve un `UnverifiedContract`: comprueba
+estructura, integridad del `contract_hash` y presencia de firma, pero **no
+verifica la firma criptográficamente**, porque no recibe una clave pública
+confiable — no debería recibirla: eso sería Trusted Third Party.
 
-La verificación real está en `ContractSigner::verify`, que sí recibe la clave.
-Mientras tanto, usar `from_bytes` sin `verify` es un pie de hongo documentado
-en la [hoja de ruta](roadmap.md).
+Sólo `UnverifiedContract::verify(&clave_externa)` produce un
+`VerifiedContract`, y no hay forma de obtener ese tipo saltándose el paso. El
+error es de compilación, no de revisión de código.
+
+`key_id` permite rotar claves: identifica cuál usar del almacén del
+anfitrión, y está cubierto por la firma, así que no puede alterarse. No es un
+ancla de confianza por sí solo.
+
+Ver [ADR-0006](adr.md#adr-0006-verificacion-de-firma-en-el-tipo).
 
 ## Nonces
 
@@ -174,7 +181,11 @@ Cada política de esta tabla tiene un test que la respalda:
 | BLAKE3 keyed correcto | `tests/vectors/crypto.json` |
 | Ed25519 correcto | `tests/vectors/crypto.json`, 3 lenguajes |
 | Conformidad C++ | 18 checks |
-| Conformidad Kotlin | 39 checks |
+| Conformidad Kotlin | 74 checks |
+| BLAKE3 multi-chunk C++ | 41 checks, 0 → 1 MiB |
+| BLAKE3 multi-chunk Kotlin | dentro de los 74 checks |
+| Firma corrupta rechazada | `signature_trust_tests`, 13 casos |
+| Ambigüedad de header | test que recorre todas las posiciones |
 
 ```bash
 ./run_all_tests.sh
@@ -183,8 +194,8 @@ Cada política de esta tabla tiene un test que la respalda:
 ## Lo que este documento no cubre
 
 - Auditoría externa de las implementaciones criptográficas propias (BLAKE3
-  en C++ y Kotlin están escritas a mano y verificadas contra vectores, no
-  auditadas).
+  en C++ y Kotlin están escritas a mano y verificadas contra vectores hasta
+  1 MiB, no auditadas).
 - Seguridad del transporte: no existe todavía.
 - Gestión del ciclo de vida de `kd_secret` en la aplicación anfitriona.
 - resistancia a ingeniería inversa con herramientas de instrumentación de

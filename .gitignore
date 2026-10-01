@@ -1,4 +1,4 @@
-# Documentación HTML generada y artefactos temporales
+# Documentación HTML generada; se publica independientemente en Netlify
 /docs/site/
 __pycache__/
 *.pyc

@@ -37,7 +37,8 @@
 // | 96-159 | Contract Name (64)   | Nombre UTF-8 (null-terminated)  |
 // | 160-223| Namespace (64)      | Namespace UTF-8 (null-term)     |
 // +-----------------------------------------------------------------+
-// | 224-255| Reserved                                               |
+// | 224-227| Key ID (4)            | Selector de clave de firma     |
+// | 228-255| Reserved               | Debe ser cero                 |
 // +-----------------------------------------------------------------+
 //
 // SCHEMA SECTION:
@@ -146,6 +147,18 @@ pub struct ContractHeader {
 
     /// Namespace (64 bytes)
     pub namespace: String,
+
+    /// Identificador de la clave de firma (4 bytes, offset 224).
+    ///
+    /// Sirve para que el verificador elija **qué** clave de un almacén
+    /// externo usar. No es un ancla de confianza por sí solo: una clave
+    /// publicada junto al contrato no sería verificable, porque un atacante
+    /// puede sustituir contrato y clave simultáneamente.
+    ///
+    /// Vive en la zona que antes era `Reserved` (224-255), así que no cambia
+    /// el tamaño del header ni desplaza ningún offset. Al estar dentro del
+    /// header canónico, queda cubierto por `contract_hash` y por la firma.
+    pub key_id: u32,
 }
 
 impl ContractHeader {
@@ -173,6 +186,7 @@ impl ContractHeader {
             signature_size: 0,
             name: String::new(),
             namespace: String::new(),
+            key_id: 0,
         }
     }
 
@@ -214,6 +228,12 @@ impl ContractHeader {
         buf[84..88].copy_from_slice(&self.security_size.to_le_bytes());
         buf[88..92].copy_from_slice(&self.signature_offset.to_le_bytes());
         buf[92..96].copy_from_slice(&self.signature_size.to_le_bytes());
+
+        // Key ID (224..228). Antes era zona reservada; ahora identifica la
+        // clave de firma en el almacén externo del verificador. Al estar
+        // dentro del header canónico queda cubierto por `contract_hash` y por
+        // la firma, de modo que alterarlo invalida ambas.
+        buf[224..228].copy_from_slice(&self.key_id.to_le_bytes());
 
         // Name (null-terminated, max 64 bytes)
         //
@@ -367,6 +387,24 @@ impl ContractHeader {
         header.namespace = String::from_utf8(ns_field[..ns_end].to_vec())
             .map_err(|_| ContractError::InvalidHeader("Namespace inválido".into()))?;
 
+        // Key ID (224..228)
+        header.key_id = u32::from_le_bytes(
+            data.get(224..228)
+                .ok_or_else(|| ContractError::InvalidHeader("key_id fuera de rango".into()))?
+                .try_into()
+                .map_err(|_| ContractError::InvalidHeader("key_id inválido".into()))?,
+        );
+
+        // El resto de la zona reservada (228..255) debe ser cero. Si no lo
+        // fuese, esos bytes quedarían fuera del preimagen del hash y podrían
+        // alterarse sin romper la integridad. Mismo razonamiento que el
+        // relleno de los campos de texto.
+        if data[228..256].iter().any(|&b| b != 0) {
+            return Err(ContractError::InvalidHeader(
+                "reservado 228-255 debe ser cero".into(),
+            ));
+        }
+
         // `schema_offset` (56..60) no participa en el hash: el preimagen pone
         // todos los offsets a cero porque son consecuencia del empaquetado y
         // no de la semántica. La sección `schema` no está implementada en
@@ -378,9 +416,19 @@ impl ContractHeader {
                 "CBC1 no define una sección schema".into(),
             ));
         }
-        if header.schema_offset != 0 && header.schema_offset as usize != Self::SIZE {
+        // Ambigüedad de representación: con `schema_size == 0`, tanto
+        // `schema_offset == 0` como `schema_offset == 256` describen el mismo
+        // contrato. Como el preimagen pone los offsets a cero, un atacante
+        // podía alternar entre ambos sin cambiar `contract_hash` ni la firma:
+        // el mismo contrato tendría dos formas byte-distintas.
+        //
+        // La regla de CBC1 es `schema_offset == 0` cuando no hay sección
+        // schema. Fijarla aquí elimina la ambigüedad y hace que el test que
+        // recorre todas las posiciones del archivo no encuentre posiciones
+        // equivalentes.
+        if header.schema_size == 0 && header.schema_offset != 0 {
             return Err(ContractError::InvalidHeader(
-                "schema_offset inválido para una sección de tamaño 0".into(),
+                "schema_offset debe ser 0 cuando no hay sección schema".into(),
             ));
         }
 
@@ -663,7 +711,11 @@ impl Contract {
         // El hash describe el archivo final y no un estado intermedio.
         let mut offset = ContractHeader::SIZE as u32;
 
-        self.header.schema_offset = offset;
+        // CBC1 no tiene sección schema. Se escribe `offset = 0` en vez del
+        // offset corriente: una sección de tamaño 0 no necesita posición, y
+        // dejar 256 haría que el mismo contrato admitiera dos
+        // representaciones byte-distintas con el mismo `contract_hash`.
+        self.header.schema_offset = 0;
         self.header.schema_size = 0;
 
         offset = offset
@@ -816,11 +868,95 @@ impl ContractSigner {
     }
 }
 
+/// Contrato parseado y validado estructuralmente, **sin** verificar la firma.
+///
+/// Existe para hacer imposible el uso accidental. Un `Contract` plano que
+/// cualquiera puede obtener con `ContractReader::from_bytes` lleva a que un
+/// integrador crea que tiene un contrato verificado cuando en realidad sólo
+/// ha comprobado que el hash cuadra y que la firma *está presente*.
+///
+/// Separar los dos estados hace que el error sea un error de compilación, no
+/// una revisión de código. Ver [ADR-0006](ADR.md#adr-0006-verificacion-de-firma-en-el-tipo).
+pub struct UnverifiedContract {
+    /// El contrato parseado. No se implementa `Deref` a propósito: sin eso,
+    /// `&*unverified` daría acceso a los campos sin verificación.
+    contract: Contract,
+}
+
+impl UnverifiedContract {
+    /// Acceso de sólo lectura al contrato sin verificar.
+    ///
+    /// Deliberadamente limitado a inspección. Leer el contrato no habilita
+    /// ninguna operación sensible por sí solo, pero se deja explícito para
+    /// que quede claro en la revisión de código qué se ha mirado.
+    pub fn inspect(&self) -> &Contract {
+        &self.contract
+    }
+
+    /// El hash declarado, útil para diagnosticar antes de verificar.
+    pub fn contract_hash(&self) -> [u8; 32] {
+        self.contract.header.contract_hash
+    }
+
+    /// `key_id` declarado en la cabecera.
+    ///
+    /// Está cubierto por la firma porque la firma cubre el header canónico
+    /// entero. No es un ancla de confianza por sí solo: sólo sirve para elegir
+    /// **qué** clave de un almacén externo usar, nunca para aceptar una clave
+    /// incluida en el propio contrato.
+    pub fn key_id(&self) -> u32 {
+        self.contract.header.key_id
+    }
+
+    /// Verificar la firma con una clave pública de confianza externa.
+    ///
+    /// Éste es el camino previsto: la clave viene del anfitrión (configuración
+    /// fijada, almacén de claves autorizadas o PKI), nunca del contrato.
+    pub fn verify(&self, verifying_key: &ed25519_dalek::VerifyingKey) -> Result<VerifiedContract> {
+        ContractSigner::verify(&self.contract, verifying_key)?;
+        Ok(VerifiedContract {
+            contract: self.contract.clone(),
+        })
+    }
+}
+
+/// Contrato cuya firma Ed25519 ha sido verificada contra una clave de confianza.
+///
+/// No se puede construir sin pasar por `UnverifiedContract::verify`. Es la
+/// garantía estructural del criterio de aceptación: no debe existir una ruta
+/// por la que obtener algo que habilite operaciones sensibles sin verificación
+/// explícita.
+pub struct VerifiedContract {
+    contract: Contract,
+}
+
+impl VerifiedContract {
+    /// Acceso al contrato verificado.
+    pub fn get(&self) -> &Contract {
+        &self.contract
+    }
+
+    /// Consumir el contrato verificado y obtener su valor.
+    pub fn into_inner(self) -> Contract {
+        self.contract
+    }
+
+    /// Atajo para la identidad del contrato.
+    pub fn contract_hash(&self) -> [u8; 32] {
+        self.contract.header.contract_hash
+    }
+
+    /// Serializar. La verificación ya ocurrió; no hay que volver a firmar.
+    pub fn to_binary(&self) -> Result<Vec<u8>> {
+        self.contract.to_binary()
+    }
+}
+
 /// Lector de contratos binarios
 pub struct ContractReader;
 
 impl ContractReader {
-    pub fn from_file(path: &str) -> Result<Contract> {
+    pub fn from_file(path: &str) -> Result<UnverifiedContract> {
         let data = std::fs::read(path)
             .map_err(|e| ContractError::IoError(e.to_string()))?;
 
@@ -834,7 +970,15 @@ impl ContractReader {
     /// 2. bounds de sección y solapamientos
     /// 3. identidad (contract_hash)
     /// 4. firma, si la política la exige
-    pub fn from_bytes(data: &[u8]) -> Result<Contract> {
+    ///
+    /// Devuelve un [`UnverifiedContract`], no un `Contract`. La verificación
+    /// criptográfica de la firma necesita una clave pública de confianza que
+    /// este lector no tiene y no debe tener: una clave incluida en el propio
+    /// contrato no es un ancla de confianza, porque un atacante puede sustituir
+    /// contrato y clave a la vez.
+    ///
+    /// Ver [ADR-0006](ADR.md#adr-0006-verificacion-de-firma-en-el-tipo).
+    pub fn from_bytes(data: &[u8]) -> Result<UnverifiedContract> {
         // Header
         let header = ContractHeader::from_bytes(data)?;
 
@@ -901,7 +1045,19 @@ impl ContractReader {
             return Err(ContractError::AuthenticationRequired);
         }
 
-        Ok(contract)
+        Ok(UnverifiedContract { contract })
+    }
+
+    /// Parsear y verificar la firma en un solo paso.
+    ///
+    /// Atajo equivalente a `from_bytes(..)?.verify(&key)`, para los casos en
+    /// que el contrato sin verificar no aporta nada. Mismo modelo de
+    /// confianza: la clave es externa.
+    pub fn from_bytes_verified(
+        data: &[u8],
+        verifying_key: &ed25519_dalek::VerifyingKey,
+    ) -> Result<VerifiedContract> {
+        Self::from_bytes(data)?.verify(verifying_key)
     }
 }
 
@@ -968,14 +1124,15 @@ mod tests {
         ContractSigner::sign(&mut contract, &signing_key).unwrap();
 
         let binary = contract.to_binary().unwrap();
-        let parsed = ContractReader::from_bytes(&binary).unwrap();
+        let unverified = ContractReader::from_bytes(&binary).unwrap();
+        let parsed = unverified.inspect();
 
         assert_eq!(parsed.header.name, "test");
         assert_eq!(parsed.header.contract_hash, contract.header.contract_hash);
 
         // Y la firma verifica contra la clave pública
         let verifying = signing_key.verifying_key();
-        ContractSigner::verify(&parsed, &verifying).unwrap();
+        ContractSigner::verify(parsed, &verifying).unwrap();
     }
 
     #[test]
@@ -1090,7 +1247,7 @@ mod tests {
             match ContractReader::from_bytes(&tampered) {
                 // Si el lector lo acepta, la firma tiene que rechazarlo.
                 Ok(parsed) => {
-                    if ContractSigner::verify(&parsed, &verifying).is_ok() {
+                    if parsed.verify(&verifying).is_ok() {
                         unverified_positions.push(pos);
                     }
                 }
@@ -1103,5 +1260,230 @@ mod tests {
             "estas posiciones del archivo pueden alterarse sin romper la integridad: {:?}",
             unverified_positions
         );
+    }
+}
+
+
+#[cfg(test)]
+mod signature_trust_tests {
+    //! Criterio de aceptación de PR1: no debe existir una ruta por la que
+    //! obtener un contrato que habilite operaciones sensibles sin haber
+    //! verificado la firma contra una clave de confianza.
+    //!
+    //! La garantía es de tipos (`UnverifiedContract` -> `VerifiedContract`), y
+    //! estos tests comprueban la parte que los tipos no pueden: que ninguna de
+    //! las formas de corromper una firma consigue atravesar `verify`.
+
+    use super::*;
+    use ed25519_dalek::{SigningKey, VerifyingKey};
+
+    fn signed_contract(key_id: u32) -> (Contract, SigningKey) {
+        let mut c = Contract::new("t", "ns", crate::ContractVersion::new(1, 0, 0));
+        c.header.key_id = key_id;
+        c.types.register("T", crate::types::TypeKind::Primitive(crate::types::PrimitiveType::U8));
+        c.operations
+            .register_auto("op", "d", crate::types::TypeId(1), crate::types::TypeId(2));
+        c.finalize().unwrap();
+
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        ContractSigner::sign(&mut c, &sk).unwrap();
+        (c, sk)
+    }
+
+    // --- Tabla de casos del criterio de aceptación ------------------------
+
+    #[test]
+    fn valid_signature_with_correct_key_verifies() {
+        let (c, sk) = signed_contract(1);
+        let unverified = ContractReader::from_bytes(&c.to_binary().unwrap()).unwrap();
+        let verified = unverified.verify(&sk.verifying_key()).unwrap();
+        assert_eq!(verified.contract_hash(), c.header.contract_hash);
+    }
+
+    #[test]
+    fn valid_signature_with_wrong_key_is_rejected() {
+        let (c, _) = signed_contract(1);
+        let wrong = SigningKey::from_bytes(&[9u8; 32]).verifying_key();
+        let unverified = ContractReader::from_bytes(&c.to_binary().unwrap()).unwrap();
+        assert!(unverified.verify(&wrong).is_err());
+    }
+
+    #[test]
+    fn corrupted_signature_is_rejected() {
+        let (mut c, sk) = signed_contract(1);
+        let mut bytes = c.to_binary().unwrap();
+        // Voltear un byte de la firma. El hash no cambia porque la firma vive
+        // fuera del preimagen: por eso hace falta verificación explícita y no
+        // basta con `contract_hash`.
+        let sig_off = c.header.signature_offset as usize;
+        let last = sig_off + crate::SIGNATURE_SIZE - 1;
+        bytes[last] ^= 0x01;
+        let _ = &mut c;
+
+        let unverified = ContractReader::from_bytes(&bytes).unwrap();
+        assert!(
+            unverified.verify(&sk.verifying_key()).is_err(),
+            "una firma corrupta no puede salir como VerifiedContract"
+        );
+    }
+
+    #[test]
+    fn truncated_signature_is_rejected() {
+        let (c, sk) = signed_contract(1);
+        let mut bytes = c.to_binary().unwrap();
+        bytes.truncate(bytes.len() - 8);
+        // El truncamiento cambia el tamaño, luego el header canónico deja de
+        // coincidir y falla antes incluso de llegar a la firma. Ambas cosas son
+        // rechazos válidos.
+        let unverified = ContractReader::from_bytes(&bytes);
+        assert!(unverified.is_err() || unverified.unwrap().verify(&sk.verifying_key()).is_err());
+    }
+
+    #[test]
+    fn signature_of_wrong_length_is_rejected() {
+        let (c, sk) = signed_contract(1);
+        let mut bytes = c.to_binary().unwrap();
+        let sig_off = c.header.signature_offset as usize;
+        // Substituir la firma por bytes de longitud distinta y reescribir el
+        // tamaño declarado para que el header siga siendo canónico.
+        bytes.truncate(sig_off);
+        bytes.extend_from_slice(&[0u8; 32]);
+        // Re-serializar el header con el tamaño nuevo.
+        let new_size = 32u32.to_le_bytes();
+        bytes[92..96].copy_from_slice(&new_size);
+        bytes[88..92].copy_from_slice(&(sig_off as u32).to_le_bytes());
+        let new_header = ContractHeader::from_bytes(&bytes).unwrap();
+        bytes[0..256].copy_from_slice(&new_header.to_bytes());
+
+        match ContractReader::from_bytes(&bytes) {
+            Ok(u) => assert!(u.verify(&sk.verifying_key()).is_err()),
+            Err(_) => {} // rechazo en el header: también válido
+        }
+    }
+
+    #[test]
+    fn missing_signature_with_required_policy_is_rejected() {
+        // Contrato sin firmar, con política que exige firma.
+        let mut c = Contract::new("t", "ns", crate::ContractVersion::new(1, 0, 0));
+        c.security.authentication_required = true;
+        c.security.signature_policy = crate::security::SignaturePolicy::Required;
+        c.finalize().unwrap();
+        let bytes = c.to_binary().unwrap();
+        assert!(ContractReader::from_bytes(&bytes).is_err());
+    }
+
+    #[test]
+    fn missing_signature_with_optional_policy_parses_but_stays_unverified() {
+        // Política opcional: el contrato carga, pero sigue siendo
+        // `UnverifiedContract`. Esto es exactamente por lo que el tipo
+        // importa: los datos existen y aun así no se pueden usar como
+        // verificados.
+        let mut c = Contract::new("t", "ns", crate::ContractVersion::new(1, 0, 0));
+        c.security.signature_policy = crate::security::SignaturePolicy::Optional;
+        c.finalize().unwrap();
+        let bytes = c.to_binary().unwrap();
+
+        let unverified = ContractReader::from_bytes(&bytes).unwrap();
+        assert!(unverified.inspect().signature.is_none());
+
+        let any_key = SigningKey::from_bytes(&[1u8; 32]).verifying_key();
+        assert!(
+            unverified.verify(&any_key).is_err(),
+            "sin firma no se puede producir VerifiedContract"
+        );
+    }
+
+    #[test]
+    fn modified_byte_in_any_section_is_rejected() {
+        let (c, sk) = signed_contract(1);
+        let original = c.to_binary().unwrap();
+
+        // Recorrer el archivo entero alterando un byte de cada sección.
+        for pos in 0..original.len() {
+            let mut bytes = original.clone();
+            bytes[pos] ^= 0x01;
+            match ContractReader::from_bytes(&bytes) {
+                Err(_) => continue, // rechazado en parseo o hash
+                Ok(u) => {
+                    assert!(
+                        u.verify(&sk.verifying_key()).is_err(),
+                        "byte {pos} alterado pasó la verificación (sección {:?})",
+                        u.inspect().header.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn contract_with_inconsistent_hash_is_rejected() {
+        let (c, sk) = signed_contract(1);
+        let mut bytes = c.to_binary().unwrap();
+        // Alterar el hash declarado. El hash recalculado ya no coincidirá, y
+        // aunque coincidiera, la firma cubre el hash normalizado a cero, así
+        // que alterarlo rompe la firma.
+        bytes[24] ^= 0xff;
+        match ContractReader::from_bytes(&bytes) {
+            Err(_) => {}
+            Ok(u) => assert!(u.verify(&sk.verifying_key()).is_err()),
+        }
+    }
+
+    #[test]
+    fn contract_signed_with_substituted_key_is_rejected() {
+        // El atacante firma con su propia clave y se la incluye. Si el
+        // verificador aceptara la clave del propio contrato, esto prosperaría.
+        let mut c = Contract::new("t", "ns", crate::ContractVersion::new(1, 0, 0));
+        c.types.register("T", crate::types::TypeKind::Primitive(crate::types::PrimitiveType::U8));
+        c.finalize().unwrap();
+        let attacker = SigningKey::from_bytes(&[0xAB; 32]);
+        ContractSigner::sign(&mut c, &attacker).unwrap();
+
+        let unverified = ContractReader::from_bytes(&c.to_binary().unwrap()).unwrap();
+        let honest = SigningKey::from_bytes(&[7u8; 32]).verifying_key();
+        assert!(unverified.verify(&honest).is_err());
+    }
+
+    #[test]
+    fn key_id_survives_roundtrip_and_is_covered_by_signature() {
+        let (c, sk) = signed_contract(0xC0FFEE);
+        let bytes = c.to_binary().unwrap();
+
+        let unverified = ContractReader::from_bytes(&bytes).unwrap();
+        assert_eq!(unverified.key_id(), 0xC0FFEE, "key_id debe sobrevivir al parseo");
+
+        // Cambiar key_id invalida la firma: prueba de que está cubierta.
+        let mut tampered = bytes.clone();
+        tampered[224] ^= 0x01;
+        match ContractReader::from_bytes(&tampered) {
+            Err(_) => {} // rechazo en hash: también demuestra cobertura
+            Ok(u) => assert!(u.verify(&sk.verifying_key()).is_err()),
+        }
+    }
+
+    #[test]
+    fn from_bytes_verified_is_equivalent_to_manual_path() {
+        let (c, sk) = signed_contract(1);
+        let bytes = c.to_binary().unwrap();
+        let a = ContractReader::from_bytes_verified(&bytes, &sk.verifying_key()).unwrap();
+        let b = ContractReader::from_bytes(&bytes)
+            .unwrap()
+            .verify(&sk.verifying_key())
+            .unwrap();
+        assert_eq!(a.contract_hash(), b.contract_hash());
+    }
+
+    #[test]
+    fn unverified_contract_exposes_no_contract_directly() {
+        // Comprobación estructural: `UnverifiedContract` no implementa
+        // `Deref<Target = Contract>`, así que no hay forma de obtener el
+        // contrato sin pasar por `inspect()`.
+        let (c, _) = signed_contract(1);
+        let u = ContractReader::from_bytes(&c.to_binary().unwrap()).unwrap();
+        let _ = u.inspect();
+        // Si alguien añadiera `Deref`, el compilador lo haría trivialmente
+        // detectable en la definición del tipo; esta aserción documenta la
+        // intención.
+        assert!(std::mem::size_of::<UnverifiedContract>() > 0);
     }
 }

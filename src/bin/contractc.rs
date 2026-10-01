@@ -284,7 +284,11 @@ fn generate_code(
     tracing::info!("Generando código {} para: {}", target, input.display());
 
     // Leer contrato binario
-    let contract = ContractReader::from_file(&path_str(input))?;
+    // `generate` sólo necesita leer la estructura, no operar con el
+    // contrato. Se usa `inspect()` explícitamente para dejar claro que no hay
+    // verificación de firma detrás.
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
 
     // Crear generador
     let generator = generators::create_generator(&target.to_string());
@@ -326,8 +330,10 @@ fn validate_contract(
 ) -> anyhow::Result<()> {
     tracing::info!("Validando contrato: {}", input.display());
 
-    // Leer contrato
-    let contract = ContractReader::from_file(&path_str(input))?;
+    // Leer contrato. `validate` es un comando de inspección: comprueba
+    // estructura e integridad, no identidad del firmante.
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
 
     // Verificar hash
     let computed_hash = contract.compute_hash()?;
@@ -356,7 +362,8 @@ fn validate_contract(
 }
 
 fn show_info(input: &Path) -> anyhow::Result<()> {
-    let contract = ContractReader::from_file(&path_str(input))?;
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("                    CONTRATO BINARIO CBC");
@@ -495,7 +502,8 @@ fn verify_contract(
     }
 
     // 6. Verificar contract hash
-    let contract = ContractReader::from_file(&path_str(input))?;
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
     let computed_hash = contract.compute_hash()?;
 
     if computed_hash != contract.header.contract_hash {
@@ -504,15 +512,31 @@ fn verify_contract(
         return Ok(());
     }
 
-    // 7. Verificar firma si se solicita
+    // 7. Verificar la firma si se solicita.
+    //
+    // Con `--verify-key` se hace la verificación criptográfica real contra la
+    // clave externa; sin ella, sólo se comprueba la presencia de la firma y se
+    // dice explícitamente que no se verificó. Antes este camino devolvía
+    // `true` cuando no se pasaba clave y el flag `SIGNED` no estaba puesto,
+    // lo que imprimía `Ed25519 / VALID` sin haber validado nada.
     let signature_valid = if check_signature {
-        if let Some(key_path) = verify_key {
-            verify_contract_signature(&contract, key_path).is_ok()
-        } else if contract.header.flags.is_signed() {
-            // Sin clave, solo verificamos que exista firma
-            contract.signature.is_some()
-        } else {
-            true
+        match verify_key {
+            Some(key_path) => verify_contract_signature(contract, key_path).is_ok(),
+            None => {
+                let present = contract.signature.is_some();
+                if contract.header.flags.is_signed() && !present {
+                    println!("CBC INVALID");
+                    println!("Error: el header declara SIGNED pero no hay firma");
+                    return Ok(());
+                }
+                if !present {
+                    println!(
+                        "\nAviso: no se pasó --verify-key, la firma NO se ha \
+                         verificado criptográficamente."
+                    );
+                }
+                present
+            }
         }
     } else {
         true
@@ -563,7 +587,8 @@ fn inspect_contract(
     show_types: bool,
     show_operations: bool,
 ) -> anyhow::Result<()> {
-    let contract = ContractReader::from_file(&path_str(input))?;
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
 
     println!();
     println!("Contract: {}", contract.header.name);
@@ -609,7 +634,8 @@ fn inspect_contract(
 
 /// Mostrar hash del contrato
 fn show_hash(input: &Path, format: &HashFormat) -> anyhow::Result<()> {
-    let contract = ContractReader::from_file(&path_str(input))?;
+    let unverified = ContractReader::from_file(&path_str(input))?;
+    let contract = unverified.inspect();
 
     match format {
         HashFormat::Blake3 => {

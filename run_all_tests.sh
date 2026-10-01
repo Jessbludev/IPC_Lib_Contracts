@@ -104,6 +104,21 @@ else
     head -20 "$BUILD_DIR/b3.log"
 fi
 
+step "C++: BLAKE3 multi-chunk (PR2)"
+if [ "$CXX_OK" = 1 ] && g++ "${CPP_FLAGS[@]}" \
+        cpp_bindings/tests/blake3_multichunk_test.cpp \
+        -L"$BUILD_DIR" -lipc -o "$BUILD_DIR/b3multi" 2>"$BUILD_DIR/b3multi.log"; then
+    if "$BUILD_DIR/b3multi" > "$BUILD_DIR/b3multi.out" 2>&1; then
+        ok "BLAKE3 multi-chunk ($(grep -oE '[0-9]+ checks' "$BUILD_DIR/b3multi.out" | tail -1))"
+    else
+        fail "BLAKE3 multi-chunk"
+        grep FAIL "$BUILD_DIR/b3multi.out" | head -10
+    fi
+else
+    fail "compilar blake3_multichunk_test"
+    head -20 "$BUILD_DIR/b3multi.log"
+fi
+
 step "C++: conformidad cross-language"
 if [ "$CXX_OK" = 1 ] && g++ "${CPP_FLAGS[@]}" cpp_bindings/tests/conformance_test.cpp \
         -L"$BUILD_DIR" -lipc -lcrypto -o "$BUILD_DIR/conf" 2>"$BUILD_DIR/conf.log"; then

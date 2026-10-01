@@ -39,10 +39,10 @@ fn main() {
 
     // `calculate_hash` sobre el binario firmado debe reproducir el hash
     // declarado: es la comprobación que C++ no hacía (devolvía 32 ceros).
-    let reparsed = ipc_contract_system::binary_contract::ContractReader::from_bytes(
-        &signed.to_binary().expect("to_binary"),
-    )
-    .expect("reader");
+    let signed_bytes = signed.to_binary().expect("to_binary");
+    let unverified = ipc_contract_system::binary_contract::ContractReader::from_bytes(&signed_bytes)
+        .expect("reader");
+    let reparsed = unverified.inspect();
     println!("reparsed_hash      = {}", hex(&reparsed.header.contract_hash));
 }
 

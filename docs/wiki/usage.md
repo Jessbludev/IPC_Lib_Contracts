@@ -136,24 +136,59 @@ hash queda obsoleto y `verify` fallará.
 
 ### Cargar y verificar
 
+`from_bytes` devuelve un `UnverifiedContract`: un contrato parseado y
+validado estructuralmente, **sin** verificar la firma. Sólo `verify` con una
+clave pública de confianza externa produce un `VerifiedContract`.
+
 ```rust
 use ipc_contract_system::binary_contract::ContractReader;
 
-let contract = ContractReader::from_bytes(&bytes)?;
-let verifying_key = signing_key.verifying_key();
-ContractSigner::verify(&contract, &verifying_key)?;
+let candidate = ContractReader::from_bytes(&bytes)?;   // UnverifiedContract
+
+// La clave viene del anfitrión, nunca del contrato.
+let trusted = load_authorized_key(candidate.key_id())?;
+let verified = candidate.verify(&trusted)?;            // VerifiedContract
+
+let contract = verified.get();   // ahora sí
 ```
 
-`ContractReader::from_bytes` rechaza el contrato si la política exige firma y
-no la hay, si el header no es canónico, si alguna sección se sale de rango o
-si el `contract_hash` recalculado no coincide.
+Atajo equivalente:
 
-**Atención a un límite conocido:** el lector comprueba que la firma *está
-presente* y que el `contract_hash` cuadra, pero no verifica la firma
-criptográficamente, porque no recibe una clave pública confiable. La
-verificación real se hace con `ContractSigner::verify`, que sí la exige. Si
-aceptas contratos de una fuente no confiable, usa siempre `verify`, no sólo
-`from_bytes`. Está en la [hoja de ruta](roadmap.md).
+```rust
+let verified = ContractReader::from_bytes_verified(&bytes, &trusted)?;
+```
+
+`from_bytes` rechaza el contrato si la política exige firma y no la hay, si el
+header no es canónico, si alguna sección se sale de rango o si el
+`contract_hash` recalculado no coincide.
+
+**Por qué dos tipos.** Antes, `from_bytes` devolvía un `Contract` normal, y un
+integrador podía usarlo creyendo que estaba verificado. Ahora el error es un
+error de compilación. Ver
+[ADR-0006](adr.md#adr-0006-verificacion-de-firma-en-el-tipo).
+
+#### Ancla de confianza
+
+La clave pública **nunca** debe salir del propio contrato: un atacante puede
+sustituir contrato y clave a la vez. Fuentes válidas:
+
+- fijada en configuración;
+- almacén local de claves autorizadas;
+- rotación identificada por `key_id`;
+- PKI externa.
+
+`key_id` vive en el header CBC1 (offset 224) y está cubierto por la firma. No
+es un ancla de confianza por sí solo: sirve para elegir qué clave del almacén
+usar.
+
+#### Inspección sin verificar
+
+Para herramientas que sólo leen, existe `inspect()`:
+
+```rust
+let candidate = ContractReader::from_bytes(&bytes)?;
+let name = &candidate.inspect().header.name;   // explícito: no verificado
+```
 
 ### Frames
 

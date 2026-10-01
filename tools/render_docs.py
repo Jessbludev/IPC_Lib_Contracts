@@ -11,8 +11,8 @@ Por qué existe como script y no como proceso manual:
 
 - Los slugs se generan aquí y sólo aquí. La versión previa transliteraba
   `ó` como `n` en vez de `o`, lo que producía nombres de archivo y anclas como
-  un nombre de archivo y un ancla incorrectos. El generador actual mantiene
-  una única fuente de verdad para los identificadores.
+  `implementaci-n.html#implementaci-n-de-blake3`. Dos fuentes de verdad para
+  los identificadores, y ninguna correcta.
 - Un sitio generado por un comando que no está en el repositorio no es
   reproducible: nadie puede regenerarlo ni comprobar que el HTML publicado
   corresponde al Markdown.
@@ -47,10 +47,11 @@ PAGES = [
     ("docs/wiki/implementation.md", "implementation.html", "Implementación", ("root",)),
     ("docs/wiki/integration.md", "integration.html", "Integración", ("root",)),
     ("docs/wiki/roadmap.md", "roadmap.html", "Hoja de ruta", ("root",)),
+    ("docs/wiki/snapshots.md", "snapshots.html", "Snapshots", ("root",)),
     ("docs/wiki/security.md", "security-wiki.html", "Seguridad (Wiki)", ("root",)),
 ]
 
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 
 # --------------------------------------------------------------------------

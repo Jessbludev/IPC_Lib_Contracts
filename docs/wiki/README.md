@@ -3,7 +3,11 @@
 Sistema de contratos binarios canónicos para comunicación inter-procesos con
 autenticación criptográfica end-to-end, sin FFI ni NDK.
 
-**Estado: 2.1.1 — pre-release (`0.2.0`)**
+**Estado: 2.1.2 — pre-release (`0.3.0-pre`)**
+
+Los dos riesgos que bloqueaban la versión estable están cerrados: la
+verificación de firma es ahora inescapable por tipos, y BLAKE3 calcula
+`contract_hash` para entradas de cualquier tamaño. Queda el transporte.
 
 ---
 
@@ -29,9 +33,9 @@ varía mucho entre(binding.
 |---|---|---|
 | Core Rust (`src/`) | **Funcional** | CBC, protocolo de frames, criptografía, verificación |
 | CLI `contractc` | **Funcional** | `compile`, `verify`, `inspect`, `hash`, `dump`, `generate` |
-| Criptografía C++ | **Funcional** | Ed25519, BLAKE3-256, ChaCha20-Poly1305, anti-replay |
+| Criptografía C++ | **Funcional** | Ed25519, BLAKE3-256 multi-chunk, ChaCha20-Poly1305, anti-replay |
 | Parser de contratos C++ | **Funcional** | Lee CBC1, calcula y verifica `contract_hash` |
-| Contratos Kotlin | **Funcional** | BLAKE3, Ed25519, anti-replay, encoding canónico |
+| Contratos Kotlin | **Funcional** | BLAKE3 multi-chunk, Ed25519, anti-replay, encoding canónico |
 | Transport C++ | **No implementado** | `UnixSocketTransport` y `TcpTransport` lanzan excepción |
 | Transport Kotlin | **No implementado** | `UnixSocketTransport` es un stub |
 | Runtime de red Rust | **No implementado** | El engine gestiona estado y claves, no conecta sockets |
@@ -80,6 +84,7 @@ Continúa en [Get Started](get-started.md).
 | [Integración](integration.md) | Integradores | Cómo usar cada binding desde tu aplicación |
 | [Seguridad](security.md) | Auditores | Políticas zero-trust, zero-knowledge, zero-log |
 | [Hoja de ruta](roadmap.md) | Todos | Qué falta y en qué orden |
+| [Snapshots](snapshots.md) | Mantenedores | Vectores dorados y cambios de identidad |
 | [ADR](adr.md) | Mantenedores | Decisiones de arquitectura y su porqué |
 
 ## Requisitos

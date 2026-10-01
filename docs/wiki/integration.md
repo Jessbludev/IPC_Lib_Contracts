@@ -50,6 +50,8 @@ No lo guardes en `SharedPreferences` en claro ni en el bundle.
 
 ```rust
 pub struct SecureChannel {
+    // Contrato ya verificado: el tipo garantiza que la firma se comprobó
+    // contra una clave de confianza externa.
     contract: Contract,
     kd: KeyDerivation,
     session_id: u64,
@@ -60,8 +62,15 @@ pub struct SecureChannel {
 }
 
 impl SecureChannel {
-    pub fn new(contract_bytes: &[u8], kd_secret: [u8; 32]) -> anyhow::Result<Self> {
-        let contract = ContractReader::from_bytes(contract_bytes)?;
+    pub fn new(
+        contract_bytes: &[u8],
+        kd_secret: [u8; 32],
+        trusted_key: &VerifyingKey,
+    ) -> anyhow::Result<Self> {
+        // Dos pasos explícitos: parseo y verificación. `from_bytes` no devuelve
+        // un contrato verificado, y no hay forma de saltarse `verify`.
+        let verified = ContractReader::from_bytes_verified(contract_bytes, trusted_key)?;
+        let contract = verified.into_inner();
         let kd = KeyDerivation::new(&kd_secret);
         let session_id = random_session_id();
         let session_key = kd.derive_session_key(&contract.header.contract_hash, session_id);
@@ -226,9 +235,12 @@ if (!SecurityUtils.constantTimeEquals(contract.contractHash, hash)) {
 }
 ```
 
-Para validar la firma, usa la clave pública que el anfitrión
-proporciona por un canal confiable. No verifiques contra una clave que venga del propio contrato:
-eso sería Trusted Third Party, y el modelo no lo permite.
+Para validar la firma, usa la clave pública que el anfitrión proporciona por un
+canal confiable. No verifiques contra una clave que venga del propio
+contrato: eso sería Trusted Third Party, y el modelo no lo permite.
+
+En C++ y Kotlin no hay separación de tipos equivalente todavía; verifica
+siempre explícitamente con la clave externa antes de operar con el contrato.
 
 ## Contrato entre lenguajes
 
