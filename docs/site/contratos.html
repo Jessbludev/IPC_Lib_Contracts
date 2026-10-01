@@ -1,0 +1,442 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contratos — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="sistema-de-contratos-binarios-can-nicos">Sistema de Contratos Binarios Canónicos</h1>
+<h2 id="conceptos-fundamentales">Conceptos Fundamentales</h2>
+<p>El sistema de contratos binarios canónicos (CBC) proporciona un mecanismo para definir interfaces de comunicación entre procesos de forma inmutable, versionada y criptográficamente verificable.</p>
+<h3 id="inmutabilidad-del-contrato">Inmutabilidad del Contrato</h3>
+<p>Un contrato, una vez compilado y distribuido, <strong>no puede ser modificado</strong>. Cualquier cambio en la definición del contrato genera un nuevo hash de contrato, lo que invalida cualquier sesión existente.</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                    CICLO DE VIDA DEL CONTRATO                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐      contractc       ┌──────────────────────┐    │
+│   │  image_      │ ─────────────────&gt;  │   image_processor.   │    │
+│   │  processor.  │                     │   cbc                │    │
+│   │  contract    │                     │                      │    │
+│   └──────────────┘                     │  Hash: BLAKE3-256   │    │
+│                                         │   {hash_prefix}     │    │
+│                                         └──────────┬───────────┘    │
+│                                                    │                │
+│                                         ┌──────────▼───────────┐    │
+│                                         │  Contrato Inmutable   │    │
+│                                         │  - No editable        │    │
+│                                         │  - No extensible      │    │
+│                                         │  - Distribuido        │    │
+│                                         └───────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="versionado-sem-ntico">Versionado Semántico</h3>
+<p>Los contratos siguen versionado semántico (SemVer):</p>
+<div class="table-wrap"><table><thead><tr><th>Formato</th><th>Descripción</th></tr></thead><tbody><tr><td><code>major.minor.patch</code></td><td>Ejemplo: <code>1.2.3</code></td></tr><tr><td><code>major</code></td><td>Cambios incompatibles en la API</td></tr><tr><td><code>minor</code></td><td>Nuevas funcionalidades compatibles</td></tr><tr><td><code>patch</code></td><td>Correcciones compatibles</td></tr></tbody></table></div>
+<p><strong>Reglas de Compatibilidad:</strong></p>
+<ul><li>Cambio en <code>patch</code>: Compatible hacia atrás</li><li>Cambio en <code>minor</code>: Compatible hacia atrás, nuevo <code>minor</code> requiere nuevo contrato</li><li>Cambio en <code>major</code>: Incompatible, requiere nuevo contrato</li></ul>
+<h2 id="formato-cbc-canonical-binary-contract">Formato CBC (Canonical Binary Contract)</h2>
+<h3 id="estructura-general">Estructura General</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                    FORMATO BINARIO DEL CONTRATO                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────┬─────────────┬────────────┬─────────────┬────────────┐  │
+│  │  MAGIC  │   HEADER    │   TYPES    │  OPERATIONS │   SIG     │  │
+│  │  (4B)   │   (256B)    │   (var)    │   (var)    │   (64B)   │  │
+│  └─────────┴─────────────┴────────────┴─────────────┴────────────┘  │
+│                                                                      │
+│  Hash BLAKE3-256: representación canónica sin firma, hash y offsets │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="header-256-bytes">Header (256 bytes)</h3>
+<pre><code class="language-rust">pub struct ContractHeader {
+    // Identificación (16 bytes)
+    pub magic: [u8; 4],              // &quot;CBC1&quot;
+    pub format_version: u8,            // 0x01
+    pub flags: ContractFlags,
+    pub header_size: u16,             // 256
+
+    // Identificador único (16 bytes)
+    pub contract_id: u64,             // ID único del contrato
+    pub version: ContractVersion,
+
+    // Hash del contrato (32 bytes)
+    pub contract_hash: [u8; 32],      // BLAKE3-256 de la forma canónica
+
+    // Offsets y tamaños (24 bytes)
+    pub types_offset: u32,
+    pub types_size: u32,
+    pub operations_offset: u32,
+    pub operations_size: u32,
+    pub security_policy_offset: u32,
+    pub security_policy_size: u16,
+
+    // Metadatos (variable, hasta offset 128)
+    pub name_length: u8,
+    pub namespace_length: u8,
+    pub name: [u8; 64],              // Nombre del contrato
+    pub namespace: [u8; 64],         // Namespace (ej: &quot;com.example&quot;)
+
+    // Reserved (hasta 256 bytes)
+    reserved: [u8; 128],
+}</code></pre>
+<h3 id="secci-n-de-tipos">Sección de Tipos</h3>
+<p>Cada tipo tiene un ID numérico único asignado por el compilador:</p>
+<pre><code class="language-rust">pub struct TypeDefinition {
+    pub type_id: u16,           // 0x0001 - 0xFFFF
+    pub name_length: u8,
+    pub name: String,
+    pub kind: TypeKind,
+    pub fields: Vec&lt;FieldDefinition&gt;,
+}
+
+pub enum TypeKind {
+    Primitive(PrimitiveType),
+    Array { element_type: u16, length: u32 },
+    Struct,
+    Enum,
+    Map { key_type: u16, value_type: u16 },
+}</code></pre>
+<p><strong>IDs de Tipos Primitivos:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>ID</th><th>Tipo</th><th>Descripción</th></tr></thead><tbody><tr><td>0x0001</td><td>U8</td><td>Entero sin signo 8-bit</td></tr><tr><td>0x0002</td><td>U16</td><td>Entero sin signo 16-bit</td></tr><tr><td>0x0003</td><td>U32</td><td>Entero sin signo 32-bit</td></tr><tr><td>0x0004</td><td>U64</td><td>Entero sin signo 64-bit</td></tr><tr><td>0x0005</td><td>I8</td><td>Entero con signo 8-bit</td></tr><tr><td>0x0006</td><td>I16</td><td>Entero con signo 16-bit</td></tr><tr><td>0x0007</td><td>I32</td><td>Entero con signo 32-bit</td></tr><tr><td>0x0008</td><td>I64</td><td>Entero con signo 64-bit</td></tr><tr><td>0x0009</td><td>F32</td><td>Flotante 32-bit IEEE 754</td></tr><tr><td>0x000A</td><td>F64</td><td>Flotante 64-bit IEEE 754</td></tr><tr><td>0x000B</td><td>Bool</td><td>Booleano</td></tr><tr><td>0x000C</td><td>String</td><td>String UTF-8</td></tr><tr><td>0x000D</td><td>Bytes</td><td>Datos binarios</td></tr></tbody></table></div>
+<h3 id="secci-n-de-operaciones">Sección de Operaciones</h3>
+<pre><code class="language-rust">pub struct OperationDefinition {
+    pub operation_id: u16,       // 0x0001 - 0xFFFF
+    pub name_length: u8,
+    pub name: String,
+    pub input_type_id: u16,     // Tipo del input
+    pub output_type_id: u16,    // Tipo del output
+    pub timeout_ms: u32,
+    pub role: OperationRole,
+    pub flags: OperationFlags,
+}
+
+pub enum OperationRole {
+    RequestResponse = 0x01,
+    OneWay = 0x02,
+    StreamStart = 0x03,
+    StreamData = 0x04,
+    StreamEnd = 0x05,
+}</code></pre>
+<h2 id="roles-de-contrato">Roles de Contrato</h2>
+<p>El rol define el patrón de comunicación entre los extremos:</p>
+<h3 id="child-0x01">Child (0x01)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL CHILD                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │   PARENT     │                         │    CHILD     │        │
+│   │   PROCESS    │                         │   PROCESS    │        │
+│   │              │                         │              │        │
+│   │  ┌────────┐  │──── REQUEST ─────────&gt;  │              │        │
+│   │  │Server  │  │                         │  ┌────────┐  │        │
+│   │  └────────┘  │&lt;──── RESPONSE ──────────│  │Client  │  │        │
+│   │              │                         │  └────────┘  │        │
+│   └──────────────┘                         └──────────────┘        │
+│                                                                      │
+│   Características:                                                    │
+│   - Solo el padre inicia operaciones                                  │
+│   - El hijo solo responde a requests                                  │
+│   - Típico para workers/slaves                                       │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="mutual-0x02">Mutual (0x02)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL MUTUAL                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │   PROCESS A  │                         │  PROCESS B   │        │
+│   │              │                         │              │        │
+│   │  ┌────────┐  │                         │  ┌────────┐  │        │
+│   │  │Server  │  │&lt;────── REQUEST ──────────│  │Client  │  │        │
+│   │  │Client  │  │─────── RESPONSE ────────&gt;│  │Server  │  │        │
+│   │  └────────┘  │                         │  └────────┘  │        │
+│   │              │────── REQUEST ──────────&gt;│              │        │
+│   │              │&lt;────── RESPONSE ──────────│              │        │
+│   └──────────────┘                         └──────────────┘        │
+│                                                                      │
+│   Características:                                                    │
+│   - Ambos procesos pueden iniciar                                    │
+│   - Cada uno tiene servidor y cliente                                │
+│   - Simétrico bidireccional                                          │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="peer-0x03">Peer (0x03)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL PEER                                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │    PEER A    │                         │   PEER B     │        │
+│   │              │                         │              │        │
+│   │   DHT-style  │&lt;────── ANNOUNCE ────────│  DHT-style  │        │
+│   │              │─────── LOOKUP ──────────&gt;│              │        │
+│   │              │&lt;─────── RESULT ──────────│              │        │
+│   │              │                         │              │        │
+│   └──────────────┘                         └──────────────┘        │
+│                                                                      │
+│   Características:                                                    │
+│   - Sin relación cliente/servidor                                    │
+│   - Comunicación simétrica                                           │
+│   - Típico para sistemas DHT, P2P                                    │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="mux-0x04">Mux (0x04)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL MUX                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │   PROCESS    │                         │   PROCESS    │        │
+│   │              │                         │              │        │
+│   │  Channel 1   │&lt;───────────────────────│  Channel 1   │        │
+│   │  Channel 2   │&lt;───────────────────────│  Channel 2   │        │
+│   │  Channel 3   │&lt;───────────────────────│  Channel 3   │        │
+│   │     ...      │                         │     ...      │        │
+│   └──────────────┘                         └──────────────┘        │
+│                                                                      │
+│   Características:                                                    │
+│   - Múltiples canales lógicos                                       │
+│   - Cada canal tiene su propio Channel ID                           │
+│   - Isolación entre canales                                         │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="stream-0x05">Stream (0x05)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL STREAM                                  │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │   PROCESS    │                         │   PROCESS    │        │
+│   │              │                         │              │        │
+│   │  ┌────────┐  │                         │  ┌────────┐  │        │
+│   │  │Stream  │  │                         │  │Stream  │  │        │
+│   │  │Handler │  │                         │  │Handler │  │        │
+│   │  └────────┘  │                         │  └────────┘  │        │
+│   │              │                         │              │        │
+│   └──────────────┘                         └──────────────┘        │
+│          │                                        │                 │
+│          ▼                                        ▼                 │
+│   ┌─────────────────────────────────────────────────────┐           │
+│   │                    STREAM FLOW                        │           │
+│   ├─────────────────────────────────────────────────────┤           │
+│   │  START ──&gt; [DATA] ──&gt; [DATA] ──&gt; [DATA] ──&gt; END   │           │
+│   │           pause/resume en cualquier punto            │           │
+│   └─────────────────────────────────────────────────────┘           │
+│                                                                      │
+│   Características:                                                    │
+│   - Conexión persistente                                            │
+│   - Flujo de datos en tiempo real                                   │
+│   - Control de flujo (pause/resume)                                 │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="oneway-0x06">OneWay (0x06)</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                          ROL ONEWAY                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌──────────────┐                         ┌──────────────┐        │
+│   │   SENDER     │ ──────── DATA ─────────&gt;│   RECEIVER   │        │
+│   │              │ ──────── DATA ─────────&gt;│              │        │
+│   │              │ ──────── DATA ─────────&gt;│              │        │
+│   │              │ ──────── CLOSE ────────&gt;│              │        │
+│   └──────────────┘                         └──────────────┘        │
+│                                                                      │
+│   Características:                                                    │
+│   - Sin respuesta esperada                                            │
+│   - Fire-and-forget                                                  │
+│   - Eventos, logs, métricas                                          │
+│   - No requiere ACK                                                  │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+<h2 id="ejemplo-compilaci-n-de-contrato">Ejemplo: Compilación de Contrato</h2>
+<h3 id="entrada-dsl">Entrada (DSL)</h3>
+<pre><code class="language-dsl">contract &quot;calculator&quot; {
+    version 1.0.0
+    namespace &quot;com.example&quot;
+    role mutual
+
+    security {
+        authentication required
+        encryption required
+        replay_protection required
+    }
+
+    type Operation {
+        left: f64
+        right: f64
+        operator: string  // &quot;+&quot;, &quot;-&quot;, &quot;*&quot;, &quot;/&quot;
+    }
+
+    operation compute {
+        input Operation
+        output f64
+        timeout 5s
+        idempotent true
+    }
+}</code></pre>
+<h3 id="salida-cbc-binario">Salida (CBC Binario)</h3>
+<pre><code>$ contractc compile calculator.contract -o output/
+
+[INFO] Compilando: calculator.contract
+[INFO] Nombre: calculator
+[INFO] Namespace: com.example
+[INFO] Versión: 1.0.0
+[INFO] Rol: Mutual
+[INFO] Seguridad: auth + enc + replay
+[INFO] Tipos compilados: 2
+       - Operation (ID: 0x0001)
+       - Result (ID: 0x0002)
+[INFO] Operaciones compiladas: 1
+       - compute (ID: 0x0001)
+[INFO] Hash del contrato: a3f8b2c1d4e5...
+[INFO] Contrato binario: output/calculator.cbc
+[INFO] Tamaño total: 1,247 bytes</code></pre>
+<h3 id="contenido-binario">Contenido Binario</h3>
+<pre><code class="language-hex"># Magic (4 bytes)
+43 42 43 31                                        # &quot;CBC1&quot;
+
+# Header (256 bytes)
+01 01 00 00 ...                                    # version, flags, sizes
+
+# Contract Hash (32 bytes)
+a3 f8 b2 c1 d4 e5 f6 ...                           # BLAKE3-256
+
+# Tipos
+01 09 4f 70 65 72 61 74 69 6f 6e                 # Type: Operation
+02 06 52 65 73 75 6c 74                           # Type: Result
+
+# Operaciones
+01 07 63 6f 6d 70 75 74 65                       # Op: compute</code></pre>
+<h2 id="validaci-n-de-contrato">Validación de Contrato</h2>
+<h3 id="hash-del-contrato">Hash del Contrato</h3>
+<p>El hash se calcula sobre todo el contrato excepto la firma:</p>
+<pre><code class="language-rust">pub fn calculate_contract_hash(contract: &amp;[u8]) -&gt; [u8; 32] {
+    // Excluir últimos 64 bytes (firma)
+    let data_to_hash = &amp;contract[..contract.len() - 64];
+    sha256(data_to_hash)
+}</code></pre>
+<h3 id="firma-digital-opcional">Firma Digital (Opcional)</h3>
+<pre><code class="language-rust">use ed25519_dalek::{Signer, SigningKey};
+
+//Firmar contrato
+let signing_key = SigningKey::from_bytes(&amp;key_bytes);
+let signature = signing_key.sign(contract_hash);
+
+let mut final_contract = contract.to_vec();
+final_contract[contract.len() - 64..].copy_from_slice(&amp;signature.to_bytes());</code></pre>
+<h3 id="verificaci-n-en-runtime">Verificación en Runtime</h3>
+<pre><code class="language-rust">pub fn verify_contract(contract: &amp;[u8], public_key: &amp;[u8; 32]) -&gt; Result&lt;()&gt; {
+    // 1. Verificar magic
+    if &amp;contract[..4] != b&quot;CBC1&quot; {
+        return Err(ContractError::InvalidMagic);
+    }
+
+    // 2. Extraer hash del header
+    let stored_hash = extract_hash_from_header(&amp;contract[16..48]);
+
+    // 3. Calcular hash de datos
+    let calculated_hash = calculate_contract_hash(contract);
+
+    // 4. Comparar
+    if stored_hash != calculated_hash {
+        return Err(ContractError::HashMismatch);
+    }
+
+    // 5. Verificar firma (si existe)
+    if has_signature(contract) {
+        let signature = extract_signature(contract);
+        verify_signature(&amp;stored_hash, &amp;signature, public_key)?;
+    }
+
+    Ok(())
+}</code></pre>
+<h2 id="integraci-n-con-runtime">Integración con Runtime</h2>
+<h3 id="carga-de-contrato">Carga de Contrato</h3>
+<pre><code class="language-rust">use std::fs;
+use std::path::Path;
+
+pub struct ContractLoader {
+    verification_key: Option&lt;[u8; 32]&gt;,
+}
+
+impl ContractLoader {
+    pub fn load&lt;P: AsRef&lt;Path&gt;&gt;(&amp;self, path: P) -&gt; Result&lt;Contract&gt; {
+        let data = fs::read(path)?;
+        self.verify(&amp;data)?;
+        self.parse(&amp;data)
+    }
+
+    pub fn load_from_bytes(&amp;self, data: &amp;[u8]) -&gt; Result&lt;Contract&gt; {
+        self.verify(data)?;
+        self.parse(data)
+    }
+}</code></pre>
+<h3 id="sesi-n-de-contrato">Sesión de Contrato</h3>
+<pre><code class="language-rust">pub struct ContractSession {
+    contract: Contract,
+    session_id: u64,
+    role: ContractRole,
+    channel_id: u32,
+    sequence: u64,
+    security: SecurityContext,
+}
+
+impl ContractSession {
+    pub fn new(contract: Contract, session_id: u64) -&gt; Result&lt;Self&gt; {
+        Ok(Self {
+            contract,
+            session_id,
+            role: Contract::role(),
+            channel_id: 0,
+            sequence: 0,
+            security: SecurityContext::new(),
+        })
+    }
+
+    pub fn next_sequence(&amp;mut self) -&gt; u64 {
+        let seq = self.sequence;
+        self.sequence += 1;
+        seq
+    }
+}</code></pre>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="1-versionado-correcto">1. Versionado Correcto</h3>
+<pre><code class="language-dsl"># INCORRECTO: Cambiar operación sin incrementar versión
+contract &quot;service&quot; {
+    version 1.0.0
+    operation old_op { ... }  // Cambiar a new_op
+}
+
+# CORRECTO: Nueva versión del contrato
+contract &quot;service&quot; {
+    version 2.0.0
+    operation new_op { ... }  // Nuevo contrato
+}</code></pre>
+<h3 id="2-tipos-descriptivos">2. Tipos Descriptivos</h3>
+<pre><code class="language-dsl"># INCORRECTO: Tipos genéricos
+type Request { data: bytes }
+type Response { data: bytes }
+
+# CORRECTO: Tipos específicos del dominio
+type ImageResizeRequest { image: Image, width: u32, height: u32 }
+type ImageResizeResponse { result: Image, processing_time_ms: u64 }</code></pre>
+<h3 id="3-timeouts-razonables">3. Timeouts Razonables</h3>
+<pre><code class="language-dsl"># Operación rápida
+operation ping { output bool, timeout 100ms }
+
+# Operación que puede tomar tiempo
+operation process_video { input Video, output Video, timeout 300s }</code></pre>
+<h3 id="4-idempotencia-documentada">4. Idempotencia Documentada</h3>
+<pre><code class="language-dsl"># Idempotente: seguro repetir
+operation get_balance { input AccountId, output Balance, idempotent true }
+
+# No idempotente: efectos secundarios
+operation transfer_funds { input Transfer, output Receipt, idempotent false }</code></pre>
+<h2 id="comparaci-n-de-formatos">Comparación de Formatos</h2>
+<div class="table-wrap"><table><thead><tr><th>Aspecto</th><th>YAML</th><th>JSON</th><th>CBC (Binario)</th></tr></thead><tbody><tr><td>Legible por humanos</td><td>Si</td><td>Si</td><td>No</td></tr><tr><td>Tamaño</td><td>Grande</td><td>Medio</td><td>Pequeño</td></tr><tr><td>Parseo</td><td>Lento</td><td>Medio</td><td>Rápido</td></tr><tr><td>Validación de tipos</td><td>Runtime</td><td>Runtime</td><td>Compile-time</td></tr><tr><td>IDs numéricos</td><td>No</td><td>No</td><td>Si</td></tr><tr><td>Hash criptográfico</td><td>No</td><td>No</td><td>Si</td></tr><tr><td>Firma digital</td><td>No</td><td>No</td><td>Si</td></tr></tbody></table></div>
+<h2 id="pr-ximos-pasos">Próximos Pasos</h2>
+<ol><li><strong>Compilar contrato de ejemplo:</strong></li></ol>
+<p>   ``<code>bash    contractc compile contracts/image_processor.contract -o output/    </code>``</p>
+<ol><li><strong>Generar bindings:</strong></li></ol>
+<p>   ``<code>bash    contractc generate output/image_processor.cbc --target rust -o generated/    contractc generate output/image_processor.cbc --target kotlin -o generated/    </code>``</p>
+<ol><li><strong>Verificar contrato:</strong></li></ol>
+<p>   ``<code>bash    contractc validate output/image_processor.cbc --verify-signature    </code>``</p>
+<ol><li><strong>Usar en runtime:</strong></li></ol>
+<p>   ```rust    use ipc_contract_system::{Contract, ContractSession};</p>
+<p>   let contract = Contract::load("output/image_processor.cbc")?;    let mut session = ContractSession::new(contract, session_id)?;    ```</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>

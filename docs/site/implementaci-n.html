@@ -1,0 +1,151 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Implementación — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="implementaci-n">Implementación</h1>
+<p>Cómo funciona por dentro. Esta es la referencia para quien mantenga el código o tenga que reimplementar un binding.</p>
+<h2 id="principles">Principles</h2>
+<ol><li><strong>Todo byte del archivo está cubierto por el hash o se rechaza.</strong> Si un</li></ol>
+<p>   byte del contrato no está en el preimagen, un atacante puede alterarlo sin    romper la integridad. No es negociable.</p>
+<ol><li><strong>Ningún parser hace panic.</strong> Una librería que aborta el proceso del</li></ol>
+<p>   anfitrión por un input hostile es un denegación de servicio, no un bug.</p>
+<ol><li><strong>Sin degradación silenciosa.</strong> Si algo no valida, se rechaza con un</li></ol>
+<p>   error explícito. Nunca se continúa con un valor por defecto.</p>
+<ol><li><strong>La identidad es BLAKE3-256.</strong> SHA-256 queda como compatibilidad legacy y</li></ol>
+<p>   no se usa para identidad.</p>
+<h2 id="formato-cbc1">Formato CBC1</h2>
+<p>Contrato binario canónico. Todo little-endian, sin relleno ni alineación implicita.</p>
+<pre><code>┌──────────────────────────────────────────┐ 0
+│ Header — 256 bytes fijos                 │
+│   magic              [4]  &quot;CBC1&quot;         │
+│   format_version     [1]  1              │
+│   flags              [1]                 │
+│   header_size        [2]  256            │
+│   contract_id        [8]                 │
+│   version            [3]  major/minor/pat│
+│   contract_hash     [32]  BLAKE3-256     │
+│   schema_offset     [4]  schema_size  [4]│
+│   types_offset      [4]  types_size   [4]│
+│   ops_offset        [4]  ops_size     [4]│
+│   policy_offset     [4]  policy_size  [4]│
+│   contract_id_2      [8]                 │
+│   name             [64]  NUL-terminated  │
+│   namespace        [64]  NUL-terminated  │
+│   description     [128]  NUL-terminated  │
+│   padding          [60]  debe ser cero   │
+├──────────────────────────────────────────┤ 256
+│ Sección de tipos                          │
+├──────────────────────────────────────────┤
+│ Sección de operaciones                    │
+├──────────────────────────────────────────┤
+│ Política de seguridad                     │
+├──────────────────────────────────────────┤
+│ Firma Ed25519 (64 bytes) — opcional      │
+└──────────────────────────────────────────┘</code></pre>
+<p>Los offsets son absolutos desde el inicio del archivo. Deben estar alineados, dentro de rango y no solaparse.</p>
+<h3 id="preimagen-del-hash">Preimagen del hash</h3>
+<pre><code>BLAKE3-256(
+    header[0..256]  con contract_hash = 0
+                    y todos los offsets/tamaños = 0
+  ++ tipos
+  ++ operaciones
+  ++ política
+)</code></pre>
+<p>El relleno del header después de los NUL <strong>debe ser cero</strong> y forma parte del preimagen. <code>ContractHeader::to_bytes</code> lo garantiza, y <code>ContractHeader::from_bytes</code> rechaza cualquier header cuya re-serialización no sea idéntica a los bytes recibidos. Esa es la defensa contra el ataque que encontró el fuzzer (ver más abajo).</p>
+<h3 id="firmado">Firmado</h3>
+<p>Al firmar, <code>flags</code> incluye <code>SIGNED</code>. El preimagen de la firma es el mismo preimagen del hash con ese flag ya activo. El orden importa: activar el flag después de calcular el preimagen produce una firma que cubre un documento distinto del que se va a verificar. Ese bug existía en v2.1.</p>
+<h2 id="protocolo-de-frames">Protocolo de frames</h2>
+<p>64 bytes de header, ver <a href="uso.html#frame">Uso → Frame</a>. El AAD del AEAD son los bytes 0..48.</p>
+<p>El prefijo de 12 bytes del contrato viaja en cada frame como discriminador rápido. No es identidad: la identidad autoritativa es el <code>contract_hash</code> completo de 32 bytes, que viaja en el <code>HandshakeHello</code>.</p>
+<h2 id="handshake">Handshake</h2>
+<pre><code>Extremo A                          Extremo B
+   │                                    │
+   │──── HandshakeHello ───────────────&gt;│   contract_hash[32]
+   │                                    │   versión, nonce
+   │                                    │
+   │  B verifica:                       │
+   │   · hash conocido y correcto       │
+   │   · política de firma satisfecha   │
+   │   · versión soportada              │
+   │                                    │
+   │&lt;──── HandshakeHello ───────────────│
+   │                                    │
+   │  Verificación de firma mutua (si el │
+   │  rol es Mutual)                    │
+   │                                    │
+   │════ sesiones de claves derivadas ══│</code></pre>
+<p>El <code>nonce</code> del hello es aleatorio y de un solo uso: es la única aleatoriedad del protocolo. Todo lo demás se deriva.</p>
+<h2 id="criptograf-a">Criptografía</h2>
+<h3 id="derivaci-n-de-claves">Derivación de claves</h3>
+<pre><code>kd_secret        32 bytes, alta entropía, único por instalación
+      │
+      ├── HKDF-Expand(prk = kd_secret, info = &quot;ipc-v2 kdf&quot;, len=32)
+      │     └── base_key
+      │
+      │   base_key + session_material
+      │     = BLAKE3(base_key ‖ b&quot;ipc-v2 session&quot; ‖ contract_hash ‖ session_id_le)
+      │     └── session_key
+      │
+      │   session_key → HKDF-Expand(info=&quot;enc&quot;, 32)  → encryption_key
+      │   session_key → HKDF-Expand(info=&quot;nonce&quot;, 32) → nonce_key</code></pre>
+<p><code>kd_secret</code> es lo único que hay que proteger. Todo lo demás se deriva y no debe almacenarse.</p>
+<p><strong>Por qué BLAKE3 y no HKDF para la derivación de sesión:</strong> HKDF-Expand exige <code>PRK</code> y <code>salt</code> con longitudes mínimas (<code>hash_len</code> y <code>hash_len</code>), y usarlos con 32 bytes de clave cruda sin pasar por <code>Extract</code> rompe el contrato. Se usa BLAKE3 como PRF con clave. Está documentado en <a href="adr.html#adr-0003-kdf-basada-en-blake3">ADR-0003</a>.</p>
+<h3 id="nonce">Nonce</h3>
+<pre><code>nonce = BLAKE3_keyed(nonce_key, 
+                     b&quot;ipc-v2 nonce&quot; ‖ direction ‖ session_id_le ‖ sequence_le)[0..12]</code></pre>
+<p><strong>No es aleatorio.</strong> Es una función pseudoaleatoria con clave, y por eso es determinista: los tres lenguajes pueden calcularlo y obtener los mismos 12 bytes sin negociar nada.</p>
+<p>La seguridad depende de que <code>(session_id, sequence, direction)</code> no se repita bajo la misma <code>nonce_key</code>. <code>AntiReplay</code> garantiza que una secuencia no se procese dos veces, y <code>direction</code> separa TX de RX, así que la reutilización exige un fallo simultáneo en ambas protecciones.</p>
+<p><strong>Consecuencia práctica:</strong> un contador reiniciado bajo la misma clave de sesión reutiliza nonces. Si haces checkpoint/restart, deriva una clave de sesión nueva.</p>
+<h3 id="anti-replay">Anti-replay</h3>
+<p>Ventana sliding de 1024 secuencias por <code>(session_id, direction)</code>:</p>
+<pre><code class="language-rust">struct AntiReplay {
+    highest: u64,
+    bitmap: u64,      // bit N = sequence (highest - N) visto
+    window_size: u64,
+}</code></pre>
+<ul><li><code>sequence &gt; highest</code> → desplazar y aceptar</li><li><code>highest - sequence &lt; window_size</code> → comprobar bit; ya visto = rechazar</li><li>más atrás que la ventana → rechazar</li></ul>
+<p><strong>Detalle de implementación que costó un bug:</strong> al desplazar hay que mover el bitmap (<code>bitmap &lt;&lt;= delta</code>), no sólo redimensionarlo. La implementación v2.1 hacía <code>resize</code> sin desplazar, de modo que la ventana nunca olvidaba nada y mixed dos convenciones de índice a mitad de la función. Los tests pasaban porque sólo comprobaban recencia.</p>
+<h3 id="orden-de-validaci-n">Orden de validación</h3>
+<pre><code>receive():
+  1. parsear frame          → error estructural
+  2. comprobar prefijo      → contrato equivocado
+  3. verificar AEAD         → mensaje alterado
+  4. registrar secuencia    → anti-replay</code></pre>
+<p>El AEAD va <strong>antes</strong> que el anti-replay, a propósito. Si un atacante sin la clave de descifrado pudiera hacer avanzar la ventana, podría bloquear tráfico válido: denegación de servicio sin进程中 ningún secreto. Autenticar primero significa que sólo quien tiene la clave puede avanzar la ventana.</p>
+<h2 id="bugs-reales-encontrados-en-v2-1">Bugs reales encontrados en v2.1</h2>
+<p>No están en la especificación P0. Se listan porque son la razón de que existan los tests actuales.</p>
+<h3 id="ventana-anti-replay-rota-rust">Ventana anti-replay rota (Rust)</h3>
+<p><code>shift_and_expand()</code> redimensionaba sin desplazar, y la función mezclaba dos convenciones de índice. La ventana no olvidaba.</p>
+<h3 id="sign-firmaba-el-preimagen-equivocado"><code>sign()</code> firmaba el preimagen equivocado</h3>
+<p>El flag <code>SIGNED</code> se activaba <strong>después</strong> de calcular el preimagen. La firma cubría un header con <code>flags=0</code> mientras el hash usaba <code>flags=SIGNED</code>, así que ninguna firma validaba jamás.</p>
+<h3 id="fallo-de-integridad-encontrado-por-fuzzing">Fallo de integridad encontrado por fuzzing</h3>
+<p>El relleno tras el NUL del campo <code>name</code> (byte 98 en adelante) y el de <code>schema_offset</code> (56..59) <strong>no formaban parte del preimagen</strong>, porque <code>compute_hash()</code> lo reconstruía desde la struct <em>parseada</em>. Se podían alterar sin cambiar ni <code>contract_hash</code> ni la firma.</p>
+<p>Causa raíz: el hash se calculaba desde la representación en memoria en vez de desde los bytes del archivo. Un archivo no canónico producía el mismo hash que su versión canónica.</p>
+<p>Arreglo:</p>
+<ol><li><code>to_bytes</code> rellena con ceros tras el NUL</li><li><code>ContractHeader::from_bytes</code> exige <code>header.to_bytes() == data[..256]</code></li><li>Se rechaza una sección <code>schema</code> no vacía</li></ol>
+<p>Regresión: <code>test_no_byte_of_the_file_escapes_integrity</code>, que recorre <strong>todas</strong> las posiciones del archivo y comprueba que alterarlas cambia el hash.</p>
+<h3 id="hash-de-contrato-con-implementaci-n-placeholder-c">Hash de contrato con implementación placeholder (C++)</h3>
+<pre><code class="language-cpp">std::vector&lt;uint8_t&gt; Contract::calculate_hash(const std::vector&lt;uint8_t&gt;&amp;) {
+    std::vector&lt;uint8_t&gt; hash(protocol::HASH_SIZE, 0);  // 32 ceros
+    return hash;
+}</code></pre>
+<p><code>Contract::verify()</code> compara ese resultado con el hash declarado, así que <strong>devolvía <code>false</code> para todos los contratos</strong>: la comprobación de integridad no verificaba nada y fallaba en silencio, que es peor que no tenerla.</p>
+<p>Corregido con BLAKE3-256 sobre el preimagen canónico, más test de conformidad que exige que C++ produzca el mismo <code>contract_hash</code> que Rust.</p>
+<h3 id="claves-derivadas-de-un-secreto-p-blico-rust">Claves derivadas de un secreto público (Rust)</h3>
+<p>El motor usaba <code>salt = [0u8; 32]</code>. Todas las claves derivadas de cualquier secreto eran idénticas entre instalaciones. Corregido: <code>kd_secret</code> se recibe al construir el engine y se 要求 caller que lo genere con entropía real.</p>
+<h2 id="conformidad-entre-lenguajes">Conformidad entre lenguajes</h2>
+<p><code>tests/vectors/crypto.json</code> es la fuente de verdad. Lo genera:</p>
+<pre><code class="language-bash">cargo run --example conformance_vectors &gt; tests/vectors/crypto.json</code></pre>
+<p>Contiene vectores para BLAKE3, Ed25519, HKDF, derivación de sesión, nonces, AEAD y anti-replay. Los tests de conformidad de los tres lenguajes los consumen.</p>
+<p>El punto importante: <strong>ningún binding delega en la implementación de referencia.</strong> BLAKE3 y el anti-replay están escritos a mano en C++ y Kotlin; Ed25519 en C++ usa OpenSSL y en Kotlin el <code>SunEC</code> del JDK. La conformidad se alcanza por bytes idénticos, no por compartir código.</p>
+<p>Esto significa que un cambio en la referencia <strong>no</strong> propaga el error a los bindings: cada uno puede divergir de forma independiente, y por eso los tests de conformidad tienen que ejecutarse siempre.</p>
+<h2 id="notas-de-implementaci-n-de-blake3">Notas de implementación de BLAKE3</h2>
+<p>Si escribes un binding nuevo, esto es lo que costó tiempo:</p>
+<ul><li>La salida raíz es el <strong>chaining value del nodo raíz</strong>: las primeras 8</li></ul>
+<p>  palabras plegadas, con el bloque de entrada del nodo raíz, no CV‖IV.</p>
+<ul><li>El modo keyed exige el flag <code>KEYED_HASH (0x10)</code> en <strong>todas</strong> las</li></ul>
+<p>  compresiones. Sin él el digest es silenciosamente incorrecto.</p>
+<ul><li><code>memcpy(cv, key, sizeof(key))</code> con <code>key</code> como array decae a puntero y copia</li></ul>
+<p>  4 u 8 bytes, no 32. Este bug hizo fallar todos los vectores a la vez.</p>
+<ul><li>Las implementaciones actuales de C++ y Kotlin soportan hasta 1024 bytes por</li></ul>
+<p>  llamada y lanzan excepción más allá. Es explícito, nunca un digest   incorrecto; ver <a href="hoja-de-ruta.html">Hoja de ruta</a>.</p>
+<h2 id="tests">Tests</h2>
+<pre><code class="language-bash">cargo test --all-features        # 53: 8 conformidad + 11 fuzzing
+./run_all_tests.sh               # los 9 gates, los 3 lenguajes</code></pre>
+<p>El fuzzing de parsers usa <code>proptest!</code> y tiene semillas de regresión persistidas en <code>tests/fuzz_parsers.proptest-regressions</code>, que incluyen los dos casos reducidos del fallo de integridad.</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>

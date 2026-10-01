@@ -1,0 +1,104 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Uso — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="uso">Uso</h1>
+<p>Referencia de la CLI y de las APIs públicas.</p>
+<h2 id="contractc">contractc</h2>
+<p>La CLI vive en <code>src/bin/contractc.rs</code> y requiere la feature <code>clap</code>:</p>
+<pre><code class="language-bash">cargo build --release --features clap</code></pre>
+<p>Opciones <strong>globales</strong> (antes del subcomando):</p>
+<div class="table-wrap"><table><thead><tr><th>Opción</th><th>Descripción</th></tr></thead><tbody><tr><td><code>-o, --output &lt;DIR&gt;</code></td><td>Directorio de salida. Por defecto, el directorio actual</td></tr><tr><td><code>-v, --verbose</code></td><td>Salida detallada</td></tr><tr><td><code>-q, --quiet</code></td><td>Sólo errores</td></tr></tbody></table></div>
+<h3 id="compile">compile</h3>
+<pre><code class="language-bash">contractc [-o DIR] compile [--sign] [--sign-key RUTA] &lt;ENTRADA&gt;</code></pre>
+<div class="table-wrap"><table><thead><tr><th>Opción</th><th>Descripción</th></tr></thead><tbody><tr><td><code>--sign</code></td><td>Firmar el contrato con Ed25519</td></tr><tr><td><code>--sign-key &lt;RUTA&gt;</code></td><td>Clave privada. 32 bytes en crudo, o 64 caracteres hex</td></tr></tbody></table></div>
+<p>Si <code>--sign</code> se pasa sin <code>--sign-key</code>, <code>contractc</code> genera una clave aleatoria y la deja en <code>contract.key</code>. Es cómodo para desarrollo y <strong>no debe usarse en producción</strong>: la clave queda en disco junto al contrato.</p>
+<p>El formato de entrada es el DSL textual. YAML no está soportado, y la razón está documentada en el propio parser: <code>serde_yaml</code> nunca estuvo declarado en <code>Cargo.toml</code>, así que esa ruta jamás compiló, y además <code>YAML -&gt; struct -&gt; binario</code> convierte detalles accidentales de serde en semántica del formato.</p>
+<h3 id="verify">verify</h3>
+<pre><code class="language-bash">contractc verify [--check-signature] [--verify-key RUTA] &lt;CONTRATO&gt;</code></pre>
+<p>Imprime <code>CBC VALID</code> o <code>CBC INVALID</code>, y después un resumen. Con <code>--check-signature</code> valida además la firma Ed25519 contra la clave pública.</p>
+<p>El orden de comprobación es deliberado y es el que hace que el error sea informativo:</p>
+<ol><li>Magic <code>CBC1</code></li><li>Versión de formato</li><li>Tamaño de header</li><li>Bounds de cada sección</li><li>Solapamientos entre secciones</li><li>UTF-8 válido en los campos de texto</li><li>Codificación canónica del header</li><li><code>contract_hash</code> recalculado</li><li>Firma, si se solicitó</li></ol>
+<p>El paso 7 es el que evita el ataque que encontró el fuzzer: el relleno tras el NUL de los campos de texto quedaba fuera del preimagen del hash, así que se podía alterar sin romper nada. El lector ahora exige que el header re-serializado sea idéntico a los bytes leídos.</p>
+<h3 id="inspect">inspect</h3>
+<pre><code class="language-bash">contractc inspect &lt;CONTRATO&gt;</code></pre>
+<p>Imprime nombre, namespace, versión, ID, recuento de tipos y operaciones, y la política de seguridad completa.</p>
+<h3 id="hash">hash</h3>
+<pre><code class="language-bash">contractc hash &lt;CONTRATO&gt;</code></pre>
+<p>Imprime sólo el <code>contract_hash</code>, en hex. Es el valor que los tres lenguajes deben producir idéntico.</p>
+<h3 id="dump">dump</h3>
+<pre><code class="language-bash">contractc dump &lt;CONTRADO&gt;</code></pre>
+<p>Volcado hexadecimal del binario completo, útil para comparar con un <code>hexdump</code>.</p>
+<h3 id="generate">generate</h3>
+<pre><code class="language-bash">contractc generate</code></pre>
+<p>Genera una estructura de proyecto de ejemplo.</p>
+<h2 id="api-de-rust">API de Rust</h2>
+<h3 id="crear-y-compilar-un-contrato">Crear y compilar un contrato</h3>
+<pre><code class="language-rust">use ipc_contract_system::{
+    Contract, ContractVersion, TypeId,
+    binary_contract::ContractSigner,
+    types::TypeKind,
+};
+use ed25519_dalek::SigningKey;
+
+let mut contract = Contract::new(&quot;image_processor&quot;, &quot;com.example&quot;, ContractVersion::new(1, 0, 0));
+
+contract.types.register(
+    &quot;PixelBuffer&quot;,
+    TypeKind::Array { element_type: TypeId(0x0003), max_length: 4096 },
+);
+contract.operations.register_auto(
+    &quot;resize&quot;, &quot;resize image&quot;, TypeId(1), TypeId(1),
+);
+
+contract.finalize()?;          // calcula contract_hash
+
+let signing_key = SigningKey::from_bytes(&amp;[7u8; 32]);
+ContractSigner::sign(&amp;mut contract, &amp;signing_key)?;
+
+let bytes = contract.to_binary()?;</code></pre>
+<p><code>finalize()</code> debe ir <strong>después</strong> de registrar todos los tipos y operaciones: calcula el hash sobre el contenido final. Si añades contenido después, el hash queda obsoleto y <code>verify</code> fallará.</p>
+<h3 id="cargar-y-verificar">Cargar y verificar</h3>
+<pre><code class="language-rust">use ipc_contract_system::binary_contract::ContractReader;
+
+let contract = ContractReader::from_bytes(&amp;bytes)?;
+let verifying_key = signing_key.verifying_key();
+ContractSigner::verify(&amp;contract, &amp;verifying_key)?;</code></pre>
+<p><code>ContractReader::from_bytes</code> rechaza el contrato si la política exige firma y no la hay, si el header no es canónico, si alguna sección se sale de rango o si el <code>contract_hash</code> recalculado no coincide.</p>
+<p><strong>Atención a un límite conocido:</strong> el lector comprueba que la firma <em>está presente</em> y que el <code>contract_hash</code> cuadra, pero no verifica la firma criptográficamente, porque no recibe una clave pública confiable. La verificación real se hace con <code>ContractSigner::verify</code>, que sí la exige. Si aceptas contratos de una fuente no confiable, usa siempre <code>verify</code>, no sólo <code>from_bytes</code>. Está en la <a href="hoja-de-ruta.html">hoja de ruta</a>.</p>
+<h3 id="frames">Frames</h3>
+<pre><code class="language-rust">let mut frame = Frame::new(
+    PacketType::Request,
+    ContractRole::Mutual,
+    session_id, 0, 0, OperationId(0x0100), TypeId(0x0001),
+    &amp;contract_hash[..12].try_into()?,
+    payload.to_vec(),
+);
+WireProtocol::send(&amp;mut frame, &amp;nonce_key, &amp;encryption_key, Direction::Tx, &amp;cipher)?;
+let wire = frame.to_bytes();</code></pre>
+<pre><code class="language-rust">let anti_replay = AntiReplay::new(1024);
+let frame = Frame::from_bytes(&amp;wire)?;
+let plaintext = WireProtocol::receive(
+    &amp;frame, &amp;expected_prefix, &amp;encryption_key, &amp;cipher, &amp;anti_replay,
+)?;</code></pre>
+<p><code>Direction</code> importa: las ventanas de TX y RX son independientes. Usar el sentido equivocado al recibir rechaza el frame.</p>
+<h3 id="handshake">Handshake</h3>
+<pre><code class="language-rust">let hello = HandshakeHello::new(contract_hash, &amp;version_string, &amp;nonce)?;
+let bytes = hello.to_bytes();</code></pre>
+<p><code>HandshakeHello</code> lleva el <code>contract_hash</code> <strong>completo</strong> (32 bytes), no un prefijo. El prefijo de 12 bytes aparece después, como discriminador rápido en cada frame, y no es identidad autoritativa.</p>
+<h2 id="pol-ticas-de-seguridad">Políticas de seguridad</h2>
+<pre><code class="language-rust">use ipc_contract_system::security::{AeadAlgorithm, SecurityPolicy, SignaturePolicy};
+
+let policy = SecurityPolicy {
+    authentication_required: true,
+    confidentiality_required: true,
+    anti_replay: true,
+    signature_policy: SignaturePolicy::Required,
+    aead: AeadAlgorithm::ChaCha20Poly1305,
+    ..Default::default()
+};</code></pre>
+<div class="table-wrap"><table><thead><tr><th>Campo</th><th>Efecto</th></tr></thead><tbody><tr><td><code>authentication_required</code></td><td>El handshake exige identidad verificada</td></tr><tr><td><code>confidentiality_required</code></td><td>El tráfico va cifrado; no hay modo claro</td></tr><tr><td><code>anti_replay</code></td><td>Ventana sliding activa por sesión y dirección</td></tr><tr><td><code>signature_policy</code></td><td><code>Required</code> rechaza contratos sin firma. <code>Optional</code> lo permite</td></tr><tr><td><code>aead</code></td><td><code>ChaCha20Poly1305</code> o <code>Aes256Gcm</code></td></tr></tbody></table></div>
+<p><code>SignaturePolicy::Required</code> es el valor por defecto y es <strong>fail-closed</strong>: sin firma, se rechaza. Relajarlo es una decisión explícita y auditable.</p>
+<h2 id="frame">Frame</h2>
+<p>64 bytes de header, fijo, little-endian:</p>
+<div class="table-wrap"><table><thead><tr><th>Offset</th><th>Tamaño</th><th>Campo</th></tr></thead><tbody><tr><td>0</td><td>1</td><td>Versión de formato</td></tr><tr><td>1</td><td>1</td><td>Tipo de paquete</td></tr><tr><td>2</td><td>1</td><td>Rol del contrato</td></tr><tr><td>3</td><td>1</td><td>Flags</td></tr><tr><td>4</td><td>4</td><td>Longitud del payload</td></tr><tr><td>8</td><td>8</td><td><code>session_id</code></td></tr><tr><td>16</td><td>8</td><td>Número de secuencia</td></tr><tr><td>24</td><td>4</td><td><code>channel_id</code></td></tr><tr><td>28</td><td>2</td><td><code>operation_id</code></td></tr><tr><td>30</td><td>2</td><td><code>schema_id</code></td></tr><tr><td>32</td><td>12</td><td>Prefijo de <code>contract_hash</code></td></tr><tr><td>44</td><td>4</td><td>Longitud del nombre de la operación</td></tr><tr><td>48</td><td>16</td><td>Reservado, debe ser cero</td></tr></tbody></table></div>
+<p>El AAD del AEAD son los bytes 0..48. Los bytes 48..64 no se autentican, porque contienen longitud de nombre y relleno.</p>
+<p><code>Frame::from_bytes</code> rechaza: versión desconocida, tipo de paquete o rol inválido, flags con bits desconocidos, longitud declarada distinta de la real, y prefijo de contrato que no coincide con el esperado.</p>
+<h2 id="siguiente">Siguiente</h2>
+<p><a href="integraci-n.html">Integración</a> para insertarlo en una aplicación, o <a href="implementaci-n.html">Implementación</a> para el detalle interno.</p><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>

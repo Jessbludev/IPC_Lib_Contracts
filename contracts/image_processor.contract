@@ -1,0 +1,114 @@
+// =============================================================================
+// Ejemplo: image_processor.contract - DSL
+// =============================================================================
+
+contract "image_processor" {
+
+    version 1.0.0
+    namespace "com.example.image"
+    role mutual
+
+    security {
+        authentication required
+        encryption required
+        replay_protection required
+    }
+
+    // =============================================================================
+    // TIPOS
+    // =============================================================================
+
+    type Image {
+        data: bytes
+        width: u32
+        height: u32
+        format: string
+        channels: u8
+    }
+
+    type ResizeOptions {
+        algorithm: string  // "nearest", "bilinear", "bicubic", "lanczos"
+        preserve_aspect: bool
+        background: string  // Color de fondo si hay letterbox
+    }
+
+    type FilterOptions {
+        intensity: f32
+        parameters: map<string, f32>
+    }
+
+    type ProcessingResult {
+        success: bool
+        message: string
+        processing_time_ms: u64
+    }
+
+    // =============================================================================
+    // OPERACIONES
+    // =============================================================================
+
+    operation resize {
+        description: "Redimensionar imagen"
+        input {
+            image: Image
+            target_width: u32
+            target_height: u32
+            options: ResizeOptions
+        }
+        output {
+            result: Image
+            metadata: ProcessingResult
+        }
+        timeout 30s
+        idempotent true
+        role request_response
+    }
+
+    operation apply_filter {
+        description: "Aplicar filtro a imagen"
+        input {
+            image: Image
+            filter_type: string  // "blur", "sharpen", "edge", "emboss", "grayscale", "sepia"
+            options: FilterOptions
+        }
+        output {
+            result: Image
+            metadata: ProcessingResult
+        }
+        timeout 20s
+        idempotent true
+        role request_response
+    }
+
+    operation convert_format {
+        description: "Convertir formato de imagen"
+        input {
+            image: Image
+            target_format: string  // "jpeg", "png", "webp", "bmp", "tiff"
+            quality: u8  // 1-100 para JPEG
+        }
+        output {
+            result: Image
+            size_bytes: u64
+            metadata: ProcessingResult
+        }
+        timeout 30s
+        idempotent true
+        role request_response
+    }
+
+    operation stream_process {
+        description: "Procesamiento de stream en tiempo real"
+        input {
+            stream_id: string
+            frame: Image
+        }
+        output {
+            processed_frame: Image
+            sequence: u64
+        }
+        timeout 100ms
+        idempotent false
+        role stream
+    }
+}

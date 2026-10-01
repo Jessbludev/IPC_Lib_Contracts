@@ -1,0 +1,219 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DSL — IPC Lib Contracts</title><link rel="stylesheet" href="style.css"></head><body><div class="layout"><aside class="side"><div class="brand">IPC Lib Contracts</div><div class="version">2.1.1 — pre-release</div><a href="readme.html">README</a><a href="dsl.html">DSL</a><a href="adr.html">ADR</a><a href="contratos.html">Contratos</a><a href="protocolo.html">Protocolo</a><a href="seguridad.html">Seguridad</a><a href="wiki.html">Wiki</a><a href="primeros-pasos.html">Primeros pasos</a><a href="implementaci-n.html">Implementación</a><a href="integraci-n.html">Integración</a><a href="hoja-de-ruta.html">Hoja de ruta</a><a href="seguridad-wiki.html">Seguridad (Wiki)</a><a href="uso.html">Uso</a></aside><main class="main"><h1 id="dsl-de-definici-n-de-contratos">DSL de Definición de Contratos</h1>
+<h2 id="gram-tica-del-lenguaje">Gramática del Lenguaje</h2>
+<pre><code>contract           := &quot;contract&quot; IDENTIFIER &quot;{&quot; declarations &quot;}&quot;
+declarations       := declaration*
+declaration       := version_decl
+                   | namespace_decl
+                   | role_decl
+                   | security_decl
+                   | type_decl
+                   | operation_decl
+
+version_decl       := &quot;version&quot; VERSION
+namespace_decl     := &quot;namespace&quot; STRING
+role_decl         := &quot;role&quot; ROLE
+security_decl      := &quot;security&quot; &quot;{&quot; security_options &quot;}&quot;
+security_options   := (&quot;authentication&quot; | &quot;encryption&quot; | &quot;replay_protection&quot;) (&quot;required&quot; | &quot;optional&quot;)*
+
+type_decl         := &quot;type&quot; IDENTIFIER &quot;=&quot; type_def
+type_def          := primitive_type
+                   | array_type
+                   | object_type
+                   | enum_type
+
+primitive_type     := &quot;u8&quot; | &quot;u16&quot; | &quot;u32&quot; | &quot;u64&quot;
+                   | &quot;i8&quot; | &quot;i16&quot; | &quot;i32&quot; | &quot;i64&quot;
+                   | &quot;f32&quot; | &quot;f64&quot;
+                   | &quot;bool&quot; | &quot;string&quot; | &quot;bytes&quot;
+
+array_type        := &quot;array&quot; &quot;&lt;&quot; type_def &quot;,&quot; NATURAL &quot;&gt;&quot;
+object_type       := &quot;{&quot; field_decl* &quot;}&quot;
+field_decl        := IDENTIFIER &quot;:&quot; type_def (&quot;?&quot; | constraint*)
+
+enum_type         := &quot;enum&quot; &quot;{&quot; variant_decl* &quot;}&quot;
+variant_decl      := IDENTIFIER (&quot;(&quot; type_def &quot;)&quot;)?
+
+operation_decl     := &quot;operation&quot; IDENTIFIER &quot;{&quot; operation_body &quot;}&quot;
+operation_body    := (&quot;input&quot; &quot;:&quot; type_def)?
+                   | (&quot;output&quot; &quot;:&quot; type_def)?
+                   | (&quot;timeout&quot; &quot;:&quot; NATURAL &quot;ms&quot;)?
+                   | (&quot;idempotent&quot; &quot;:&quot; BOOLEAN)?
+                   | (&quot;role&quot; &quot;:&quot; ROLE)?</code></pre>
+<h2 id="ejemplos">Ejemplos</h2>
+<h3 id="contrato-b-sico">Contrato Básico</h3>
+<pre><code class="language-dsl">contract &quot;image_processor&quot; {
+
+    version 1.0.0
+    namespace &quot;com.example&quot;
+    role mutual
+
+    security {
+        authentication required
+        encryption required
+        replay_protection required
+    }
+
+    // Tipos
+    type Image {
+        data: bytes
+        width: u32
+        height: u32
+        format: string
+    }
+
+    // Operaciones
+    operation resize {
+        input {
+            image: Image
+            target_width: u32
+            target_height: u32
+            algorithm: string
+        }
+        output Image
+        timeout 15s
+        idempotent true
+    }
+
+    operation apply_filter {
+        input {
+            image: Image
+            filter: string
+            intensity: f32
+        }
+        output Image
+        timeout 10s
+        idempotent true
+    }
+}</code></pre>
+<h3 id="contrato-con-tipos-compuestos">Contrato con Tipos Compuestos</h3>
+<pre><code class="language-dsl">contract &quot;data_pipeline&quot; {
+
+    version 2.1.0
+    namespace &quot;com.example.data&quot;
+    role mux
+
+    security {
+        authentication required
+        encryption optional
+        replay_protection required
+    }
+
+    // Arrays
+    type DataPoint {
+        timestamp: u64
+        value: f64
+    }
+
+    type TimeSeries = array&lt;DataPoint, 10000&gt;
+
+    // Enum
+    type Status {
+        Pending
+        Processing
+        Completed
+        Failed(ErrorCode)
+    }
+
+    type ErrorCode = u16
+
+    // Operaciones
+    operation ingest {
+        input TimeSeries
+        output Status
+        timeout 60s
+    }
+
+    operation aggregate {
+        input {
+            series: TimeSeries
+            window_ms: u64
+            function: string  // &quot;sum&quot;, &quot;avg&quot;, &quot;min&quot;, &quot;max&quot;
+        }
+        output DataPoint
+        timeout 30s
+        idempotent true
+    }
+}</code></pre>
+<h3 id="contrato-de-streaming">Contrato de Streaming</h3>
+<pre><code class="language-dsl">contract &quot;video_processor&quot; {
+
+    version 1.0.0
+    namespace &quot;com.example.video&quot;
+    role stream
+
+    security {
+        authentication required
+        encryption required
+        replay_protection required
+    }
+
+    type Frame {
+        data: bytes
+        width: u32
+        height: u32
+        format: string
+        pts: u64  // presentation timestamp
+    }
+
+    operation start_stream {
+        input {
+            source: string
+            format: string
+            options: map&lt;string, string&gt;
+        }
+        output {
+            stream_id: u64
+            status: string
+        }
+        timeout 5s
+    }
+
+    operation process_frame {
+        input Frame
+        output Frame
+        timeout 1s
+    }
+
+    operation end_stream {
+        input {
+            stream_id: u64
+        }
+        output {
+            status: string
+            frames_processed: u64
+        }
+        timeout 10s
+    }
+}</code></pre>
+<h2 id="roles-disponibles">Roles Disponibles</h2>
+<div class="table-wrap"><table><thead><tr><th>Rol</th><th>Descripción</th></tr></thead><tbody><tr><td><code>child</code></td><td>Proceso subordinado/controlado por otro</td></tr><tr><td><code>mutual</code></td><td>Ambos extremos pueden iniciar operaciones</td></tr><tr><td><code>peer</code></td><td>Comunicación simétrica entre pares</td></tr><tr><td><code>mux</code></td><td>Múltiples canales lógicos</td></tr><tr><td><code>stream</code></td><td>Flujo persistente (streaming)</td></tr><tr><td><code>oneway</code></td><td>Comunicación unidireccional</td></tr></tbody></table></div>
+<h2 id="tipos-primitivos">Tipos Primitivos</h2>
+<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Descripción</th><th>Tamaño</th></tr></thead><tbody><tr><td><code>u8</code>, <code>u16</code>, <code>u32</code>, <code>u64</code></td><td>Enteros sin signo</td><td>1-8 bytes</td></tr><tr><td><code>i8</code>, <code>i16</code>, <code>i32</code>, <code>i64</code></td><td>Enteros con signo</td><td>1-8 bytes</td></tr><tr><td><code>f32</code>, <code>f64</code></td><td>Flotantes</td><td>4-8 bytes</td></tr><tr><td><code>bool</code></td><td>Booleano</td><td>1 byte</td></tr><tr><td><code>string</code></td><td>String UTF-8</td><td>Variable</td></tr><tr><td><code>bytes</code></td><td>Datos binarios</td><td>Variable</td></tr></tbody></table></div>
+<h2 id="restricciones-de-campo">Restricciones de Campo</h2>
+<pre><code class="language-dsl">type ConstrainedExample {
+    id: u32 (min: 1, max: 1000000)
+    name: string (min_length: 1, max_length: 255)
+    email: string (pattern: &quot;^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$&quot;)
+    optional_field: string?
+}</code></pre>
+<h2 id="compilaci-n">Compilación</h2>
+<pre><code class="language-bash"># Compilar contrato DSL a binario
+contractc compile input.contract -o output/
+
+# Generar bindings Rust
+contractc generate output/contract.cbc --target rust -o generated/rust/
+
+# Generar bindings Kotlin
+contractc generate output/contract.cbc --target kotlin -o generated/kotlin/
+
+# Generar bindings TypeScript
+contractc generate output/contract.cbc --target typescript -o generated/ts/</code></pre>
+<h2 id="salida-del-compilador">Salida del Compilador</h2>
+<pre><code>$ contractc compile image_processor.contract -o output/
+[INFO] Compilando contrato: image_processor.contract
+[INFO] Nombre: image_processor
+[INFO] Versión: 1.0.0
+[INFO] Tipos: 1
+[INFO] Operaciones: 2
+[INFO] Contrato compilado: output/image_processor.cbc
+[INFO] Contract hash: a1b2c3d4e5f6...</code></pre><footer>Documentación estática offline · fuente: documentación del repositorio · 2.1.1 pre-release</footer></main></div></body></html>
