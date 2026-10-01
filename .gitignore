@@ -1,0 +1,4 @@
+# Documentación HTML generada y artefactos temporales
+/docs/site/
+__pycache__/
+*.pyc

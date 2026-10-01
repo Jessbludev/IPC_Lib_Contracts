@@ -5,10 +5,10 @@ Estado: **pre-release**
 ## Distribución canónica
 
 - Archivo: `ipc_lib_contracts_v2.1.1-reviewed-2-reproducible.zip`
-- SHA-256: `d2a9ab38e5673d549bf994b03ed014332196b5c6de9a9cb4a9bb2834a2a6c106`
-- Tamaño: `271988` bytes
-- Archivos del paquete: `71`
-- Documentación estática: `docs/site/` (14 páginas, incluida `index.html`)
+- SHA-256: `a42aae557844a7699d58273e105bfa1b4b871039e4c8d8ed8e655a7afc0ac26a`
+- Tamaño: `209013` bytes
+- Archivos del paquete: `57`
+- Documentación estática: sitio independiente en `https://ipc-lib-contracts-docs.netlify.app` (14 páginas, incluida `index.html`)
 - Generación del sitio: `python3 tools/render_docs.py` — determinista y sin dependencias externas
 - Enlaces internos y anclas rotos: 0
 
@@ -25,7 +25,7 @@ propio SHA-256; el manifiesto versionado en Git es la metadata de distribución.
 - Vectores dorados: `tests/vectors/crypto.json`.
 - Contrato de ejemplo: `contracts/image_processor.contract`.
 - Documentación normativa: `docs/`, `docs/wiki/`.
-- Sitio offline: `docs/site/`, regenerable con `tools/render_docs.py`.
+- Sitio documental: se genera con `tools/render_docs.py` y se despliega independientemente en Netlify.
 - Generador de documentación: `tools/render_docs.py`.
 
 ## Reproducibilidad y versiones
@@ -33,8 +33,8 @@ propio SHA-256; el manifiesto versionado en Git es la metadata de distribución.
 - La fuente de verdad es el árbol completo de `main`; no se reconstruye el
   proyecto desde un manifiesto.
 - La segunda ejecución consecutiva del generador produjo exactamente los
-  mismos bytes que la primera.
-- El sitio publicado usa únicamente los nombres actuales (`get-started.html`,
+  mismos bytes que la primera; los HTML generados no se versionan en este repo.
+- El sitio Netlify usa únicamente los nombres actuales (`get-started.html`,
   `implementation.html`, `integration.html`, `roadmap.html`,
   `security-wiki.html` y `usage.html`); no se conservan las páginas con slugs
   transliterados incorrectamente.

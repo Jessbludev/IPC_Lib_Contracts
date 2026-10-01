@@ -103,8 +103,8 @@ Frame de **64 bytes** con:
 
 ```bash
 # Clonar repositorio
-git clone https://github.com/example/ipc-contract-system.git
-cd ipc-contract-system
+git clone https://github.com/Jessbludev/IPC_Lib_Contracts.git
+cd IPC_Lib_Contracts
 
 # Compilar
 cargo build --release
@@ -307,6 +307,9 @@ let result = session.call("resize", payload)?;
 ```
 
 ## Documentación
+
+- [Sitio documental publicado](https://ipc-lib-contracts-docs.netlify.app) — HTML estático desplegado independientemente en Netlify
+- Para regenerar localmente: `python3 tools/render_docs.py`
 
 - [DSL.md](DSL.md) - Gramática y ejemplos del DSL
 - [docs/CONTRACTS.md](docs/CONTRACTS.md) - Sistema de contratos binarios
